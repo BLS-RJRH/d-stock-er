@@ -123,23 +123,18 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
     e.preventDefault();
 
     const btn = document.getElementById('btnSaveStaff');
-    const staffCodeInput = document.getElementById('staffCode');
-    const fullNameInput = document.getElementById('fullName');
-    const emailInput = document.getElementById('staffEmail');
-    const passwordInput = document.getElementById('staffPassword');
-    const roleInput = document.getElementById('staffRole');
-
-    const staffCode = staffCodeInput.value.trim();
-    const fullName = fullNameInput.value.trim();
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
-    const role = roleInput.value;
+    const staffCode = document.getElementById('staffCode').value.trim();
+    const fullName = document.getElementById('fullName').value.trim();
+    const email = document.getElementById('staffEmail').value.trim();
+    const password = document.getElementById('staffPassword').value;
+    const role = document.getElementById('staffRole').value;
 
     btn.disabled = true;
     btn.innerText = 'กำลังบันทึกข้อมูล...';
 
     try {
-        const { data, error } = await supabase.auth.signUp({
+        // 1. สร้างบัญชีผู้ใช้ใน Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signUp({
             email: email,
             password: password,
             options: {
@@ -151,13 +146,27 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
             }
         });
 
-        if (error) throw error;
+        if (authError) throw authError;
+
+        // 2. สร้างข้อมูลลงตาราง profiles โดยตรงทันที (ป้องกันปัญหารอยืนยันอีเมล)
+        if (authData.user) {
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .upsert({
+                    id: authData.user.id,
+                    full_name: fullName,
+                    staff_code: staffCode,
+                    role: role,
+                    is_first_login: true
+                });
+
+            if (profileError) console.warn('Profile Insert Notice:', profileError.message);
+        }
 
         alert(`สร้างบัญชีเจ้าหน้าที่ ${fullName} สำเร็จ!\nรหัสผ่านเริ่มต้น: ${password}`);
         
-        // รีเซ็ตฟอร์ม
         document.getElementById('createStaffForm').reset();
-        if (passwordInput) passwordInput.value = 'Abc@1234';
+        document.getElementById('staffPassword').value = 'Abc@1234';
         
         await loadStaffList();
 
