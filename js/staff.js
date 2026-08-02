@@ -116,9 +116,7 @@ window.updateStaffRole = async (id, newRole, name) => {
     }
 };
 
-// -------------------------------------------------------------
 // ➕ 4. ฟอร์มสร้าง Staff ใหม่
-// -------------------------------------------------------------
 document.getElementById('createStaffForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -133,8 +131,8 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
     btn.innerText = 'กำลังบันทึกข้อมูล...';
 
     try {
-        // 1. สร้างบัญชีผู้ใช้ใน Supabase Auth
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        // สร้างบัญชีผ่าน Supabase Auth (Trigger ใน Database จะสร้าง profile ให้ทันที)
+        const { data, error } = await supabase.auth.signUp({
             email: email,
             password: password,
             options: {
@@ -146,29 +144,17 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
             }
         });
 
-        if (authError) throw authError;
-
-        // 2. สร้างข้อมูลลงตาราง profiles โดยตรงทันที (ป้องกันปัญหารอยืนยันอีเมล)
-        if (authData.user) {
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .upsert({
-                    id: authData.user.id,
-                    full_name: fullName,
-                    staff_code: staffCode,
-                    role: role,
-                    is_first_login: true
-                });
-
-            if (profileError) console.warn('Profile Insert Notice:', profileError.message);
-        }
+        if (error) throw error;
 
         alert(`สร้างบัญชีเจ้าหน้าที่ ${fullName} สำเร็จ!\nรหัสผ่านเริ่มต้น: ${password}`);
         
         document.getElementById('createStaffForm').reset();
         document.getElementById('staffPassword').value = 'Abc@1234';
         
-        await loadStaffList();
+        // รอแป๊บหนึ่งแล้วโหลดรายการใหม่
+        setTimeout(async () => {
+            await loadStaffList();
+        }, 500);
 
     } catch (err) {
         console.error('Create Staff Error:', err);
@@ -178,7 +164,6 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
         btn.innerText = 'บันทึกข้อมูล Staff';
     }
 });
-
 // -------------------------------------------------------------
 // 🗑️ 5. ฟังก์ชันลบ Staff ออกจากระบบ
 // -------------------------------------------------------------
