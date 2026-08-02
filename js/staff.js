@@ -74,17 +74,20 @@ async function loadStaffList() {
 }
 
 // -------------------------------------------------------------
-// 3. เปลี่ยน Role
+// 3. เปลี่ยน Role (ส่งเข้า RPC เพื่อ Cast Type)
 // -------------------------------------------------------------
 window.updateStaffRole = async (id, newRole, name) => {
-    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', id);
+    const { error } = await supabase.rpc('update_staff_role', {
+        p_id: id,
+        p_role_str: newRole
+    });
+
     if (error) alert('เปลี่ยนสิทธิ์ไม่สำเร็จ: ' + error.message);
     else { alert(`อัปเดตสิทธิ์ของ "${name}" เรียบร้อยแล้ว`); await loadStaffList(); }
 };
 
 // -------------------------------------------------------------
-// -------------------------------------------------------------
-// 4. บันทึกสร้าง Staff (ใช้ Admin API + RPC Cast Enum)
+// 4. บันทึกสร้าง Staff
 // -------------------------------------------------------------
 document.getElementById('createStaffForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -100,12 +103,13 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
     btn.innerText = 'กำลังบันทึกข้อมูล...';
 
     try {
-        // 1. สร้าง User ใน Auth
-        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        // 1. สร้าง Auth User
+        const { data: authData, error: authError } = await supabase.auth.signUp({
             email: email,
             password: password,
-            email_confirm: true,
-            user_metadata: { full_name: fullName, staff_code: staffCode, role: role }
+            options: {
+                data: { full_name: fullName, staff_code: staffCode, role: role }
+            }
         });
 
         if (authError) throw authError;
