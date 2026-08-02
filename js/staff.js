@@ -1,127 +1,94 @@
 import { supabase } from './supabaseClient.js';
 
 // -------------------------------------------------------------
-// 🔒 1. ตรวจสอบสิทธิ์การเข้าถึง (เฉพาะ Super Admin เท่านั้น)
+// 1. ตรวจสอบสิทธิ์ Super Admin
 // -------------------------------------------------------------
-async function checkSuperAdminAuth() {
-    try {
-        const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+async function checkAuth() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return window.location.href = './index.html';
 
-        if (sessionErr || !session) {
-            alert('กรุณาเข้าสู่ระบบก่อนใช้งาน');
-            window.location.href = './index.html';
-            return;
-        }
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle();
 
-        const { data: profile, error: profileErr } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', session.user.id)
-            .maybeSingle();
-
-        if (profileErr || profile?.role !== 'SUPER_ADMIN') {
-            alert('🚫 คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการเจ้าหน้าที่ (สิทธิ์เฉพาะ Super Admin เท่านั้น)');
-            window.location.href = './dashboard.html';
-            return;
-        }
-
-        // ผ่านการตรวจสอบสิทธิ์ ดึงรายการ Staff มาแสดง
-        await loadStaffList();
-
-    } catch (err) {
-        console.error('Auth Check Error:', err);
-        alert('เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์: ' + err.message);
-        window.location.href = './dashboard.html';
+    if (profile?.role !== 'SUPER_ADMIN') {
+        alert('🚫 สิทธิ์เฉพาะ Super Admin เท่านั้น');
+        return window.location.href = './dashboard.html';
     }
+
+    await loadStaffList();
 }
 
 // -------------------------------------------------------------
-// 📋 2. ดึงรายชื่อ Staff ทั้งหมดจากตาราง profiles (พร้อม Dropdown แก้ไข Role)
+// 2. โหลดรายชื่อ Staff ทั้งหมด
 // -------------------------------------------------------------
 async function loadStaffList() {
     const tableBody = document.getElementById('staffTableBody');
     const countBadge = document.getElementById('staffCount');
-
     if (!tableBody) return;
 
-    try {
-        const { data: staffList, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .order('created_at', { ascending: false });
+    const { data: staffList, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-        if (error) throw error;
-
-        if (countBadge) countBadge.innerText = `${staffList ? staffList.length : 0} คน`;
-
-        if (!staffList || staffList.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-slate-400">ยังไม่มีรายชื่อเจ้าหน้าที่ในระบบ</td></tr>`;
-            return;
-        }
-
-        tableBody.innerHTML = staffList.map(staff => {
-            return `
-                <tr class="hover:bg-slate-50 border-b">
-                    <td class="p-3 font-mono text-xs text-slate-500">${staff.staff_code || '-'}</td>
-                    <td class="p-3 font-medium text-slate-800">${staff.full_name || 'ไม่ระบุชื่อ'}</td>
-                    <td class="p-3">
-                        <select onchange="updateStaffRole('${staff.id}', this.value, '${staff.full_name}')" 
-                                class="text-xs font-semibold px-2.5 py-1 rounded-lg border outline-none cursor-pointer transition ${
-                                    staff.role === 'SUPER_ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                                    staff.role === 'ADMIN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                                    staff.role === 'CENTER_STAFF' ? 'bg-red-50 text-red-700 border-red-200' :
-                                    'bg-blue-50 text-blue-700 border-blue-200'
-                                }">
-                            <option value="SUB_STAFF" ${staff.role === 'SUB_STAFF' ? 'selected' : ''}>🩺 Sub Staff</option>
-                            <option value="CENTER_STAFF" ${staff.role === 'CENTER_STAFF' ? 'selected' : ''}>📦 Center Staff</option>
-                            <option value="ADMIN" ${staff.role === 'ADMIN' ? 'selected' : ''}>🛡️ Admin</option>
-                            <option value="SUPER_ADMIN" ${staff.role === 'SUPER_ADMIN' ? 'selected' : ''}>👑 Super Admin</option>
-                        </select>
-                    </td>
-                    <td class="p-3 text-center">
-                        <button onclick="deleteStaff('${staff.id}', '${staff.full_name}')" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg border border-red-200 transition active:scale-95">
-                            🗑️ ลบ
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-    } catch (err) {
-        console.error('Load Staff Error:', err);
-        tableBody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-red-500">เกิดข้อผิดพลาดในการดึงข้อมูล: ${err.message}</td></tr>`;
+    if (error) {
+        tableBody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-red-500">Error: ${error.message}</td></tr>`;
+        return;
     }
+
+    if (countBadge) countBadge.innerText = `${staffList ? staffList.length : 0} คน`;
+
+    if (!staffList || staffList.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-slate-400">ยังไม่มีรายชื่อเจ้าหน้าที่ในระบบ</td></tr>`;
+        return;
+    }
+
+    tableBody.innerHTML = staffList.map(staff => `
+        <tr class="hover:bg-slate-50 border-b">
+            <td class="p-3 font-mono text-xs text-slate-500">${staff.staff_code || '-'}</td>
+            <td class="p-3 font-medium text-slate-800">${staff.full_name || 'ไม่ระบุชื่อ'}</td>
+            <td class="p-3">
+                <select onchange="updateStaffRole('${staff.id}', this.value, '${staff.full_name}')" 
+                        class="text-xs font-semibold px-2 py-1 rounded-lg border outline-none ${
+                            staff.role === 'SUPER_ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                            staff.role === 'ADMIN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                            staff.role === 'CENTER_STAFF' ? 'bg-red-50 text-red-700 border-red-200' :
+                            'bg-blue-50 text-blue-700 border-blue-200'
+                        }">
+                    <option value="SUB_STAFF" ${staff.role === 'SUB_STAFF' ? 'selected' : ''}>🩺 Sub Staff</option>
+                    <option value="CENTER_STAFF" ${staff.role === 'CENTER_STAFF' ? 'selected' : ''}>📦 Center Staff</option>
+                    <option value="ADMIN" ${staff.role === 'ADMIN' ? 'selected' : ''}>🛡️ Admin</option>
+                    <option value="SUPER_ADMIN" ${staff.role === 'SUPER_ADMIN' ? 'selected' : ''}>👑 Super Admin</option>
+                </select>
+            </td>
+            <td class="p-3 text-center">
+                <button onclick="deleteStaff('${staff.id}', '${staff.full_name}')" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg border border-red-200 active:scale-95">
+                    🗑️ ลบ
+                </button>
+            </td>
+        </tr>
+    `).join('');
 }
 
 // -------------------------------------------------------------
-// 🔄 3. ฟังก์ชันเปลี่ยนสิทธิ์ (Role) ของ Staff
+// 3. เปลี่ยน Role
 // -------------------------------------------------------------
 window.updateStaffRole = async (id, newRole, name) => {
-    try {
-        const { error } = await supabase
-            .from('profiles')
-            .update({ role: newRole })
-            .eq('id', id);
-
-        if (error) throw error;
-
-        alert(`เปลี่ยนสิทธิ์การใช้งานของ "${name}" เรียบร้อยแล้ว`);
-        await loadStaffList();
-
-    } catch (err) {
-        console.error('Update Role Error:', err);
-        alert('เกิดข้อผิดพลาดในการเปลี่ยนสิทธิ์: ' + err.message);
-        await loadStaffList();
-    }
+    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', id);
+    if (error) alert('เปลี่ยนสิทธิ์ไม่สำเร็จ: ' + error.message);
+    else { alert(`อัปเดตสิทธิ์ของ "${name}" เรียบร้อยแล้ว`); await loadStaffList(); }
 };
 
 // -------------------------------------------------------------
-// ➕ 4. ฟอร์มสร้าง Staff ใหม่
+// 4. บันทึกสร้าง Staff
 // -------------------------------------------------------------
 document.getElementById('createStaffForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-
     const btn = document.getElementById('btnSaveStaff');
+    
     const staffCode = document.getElementById('staffCode').value.trim();
     const fullName = document.getElementById('fullName').value.trim();
     const email = document.getElementById('staffEmail').value.trim();
@@ -132,34 +99,24 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
     btn.innerText = 'กำลังบันทึกข้อมูล...';
 
     try {
-        // 1. สร้างบัญชีผ่าน Supabase Auth
-        const { data, error: authError } = await supabase.auth.signUp({
-            email: email,
-            password: password,
-            options: {
-                data: {
-                    full_name: fullName,
-                    staff_code: staffCode,
-                    role: role
-                }
-            }
+        const { data, error } = await supabase.rpc('admin_create_staff', {
+            p_email: email,
+            p_password: password,
+            p_full_name: fullName,
+            p_staff_code: staffCode,
+            p_role: role
         });
 
-        if (authError) throw authError;
+        if (error) throw error;
+        if (data && !data.success) throw new Error(data.message);
 
-        alert(`สร้างบัญชีเจ้าหน้าที่ ${fullName} สำเร็จ!\nรหัสผ่านเริ่มต้น: ${password}`);
-        
+        alert(`สร้างบัญชี ${fullName} สำเร็จ!`);
         document.getElementById('createStaffForm').reset();
         document.getElementById('staffPassword').value = 'Abc@1234';
-        
-        setTimeout(async () => {
-            await loadStaffList();
-        }, 500);
+        await loadStaffList();
 
     } catch (err) {
-        console.error('Detailed Create Staff Error:', err);
-        const errMsg = err.message || err.error_description || (typeof err === 'object' ? JSON.stringify(err, Object.getOwnPropertyNames(err)) : String(err));
-        alert('เกิดข้อผิดพลาดในการสร้างบัญชี: ' + errMsg);
+        alert('เกิดข้อผิดพลาด: ' + (err.message || String(err)));
     } finally {
         btn.disabled = false;
         btn.innerText = 'บันทึกข้อมูล Staff';
@@ -167,27 +124,13 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
 });
 
 // -------------------------------------------------------------
-// 🗑️ 5. ฟังก์ชันลบ Staff ออกจากระบบ
+// 5. ลบ Staff
 // -------------------------------------------------------------
 window.deleteStaff = async (id, name) => {
-    if (!confirm(`คุณต้องการลบเจ้าหน้าที่ "${name}" ออกจากระบบใช่หรือไม่?`)) return;
-
-    try {
-        const { error } = await supabase
-            .from('profiles')
-            .delete()
-            .eq('id', id);
-
-        if (error) throw error;
-
-        alert('ลบเจ้าหน้าที่เรียบร้อยแล้ว');
-        await loadStaffList();
-
-    } catch (err) {
-        console.error('Delete Staff Error:', err);
-        alert('เกิดข้อผิดพลาดในการลบ: ' + err.message);
-    }
+    if (!confirm(`ลบเจ้าหน้าที่ "${name}" ใช่หรือไม่?`)) return;
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (error) alert('ลบไม่สำเร็จ: ' + error.message);
+    else await loadStaffList();
 };
 
-// ตรวจสอบสิทธิ์ Super Admin ทันทีเมื่อโหลดสคริปต์
-checkSuperAdminAuth();
+checkAuth();
