@@ -22,7 +22,7 @@ async function checkAuth() {
 }
 
 // -------------------------------------------------------------
-// 2. โหลดรายชื่อ Staff ทั้งหมด
+// 2. โหลดรายชื่อ Staff ทั้งหมด (พร้อมปุ่มบังคับรีเซ็ตรหัสผ่าน)
 // -------------------------------------------------------------
 async function loadStaffList() {
     const tableBody = document.getElementById('staffTableBody');
@@ -64,8 +64,16 @@ async function loadStaffList() {
                     <option value="SUPER_ADMIN" ${staff.role === 'SUPER_ADMIN' ? 'selected' : ''}>👑 Super Admin</option>
                 </select>
             </td>
-            <td class="p-3 text-center">
-                <button onclick="deleteStaff('${staff.id}', '${staff.full_name}')" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg border border-red-200 active:scale-95">
+            <td class="p-3 text-center space-x-1">
+                <!-- 🔑 ปุ่มบังคับรีเซ็ตรหัสผ่าน -->
+                <button onclick="forceResetPassword('${staff.id}', '${staff.full_name}')" 
+                        title="บังคับเปลี่ยนรหัสผ่านในครั้งถัดไป" 
+                        class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 px-2 py-1 rounded-lg border border-amber-200 transition active:scale-95">
+                    🔑 รีเซ็ต
+                </button>
+                <!-- 🗑️ ปุ่มลบ -->
+                <button onclick="deleteStaff('${staff.id}', '${staff.full_name}')" 
+                        class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg border border-red-200 transition active:scale-95">
                     🗑️ ลบ
                 </button>
             </td>
@@ -84,6 +92,23 @@ window.updateStaffRole = async (id, newRole, name) => {
 
     if (error) alert('เปลี่ยนสิทธิ์ไม่สำเร็จ: ' + error.message);
     else { alert(`อัปเดตสิทธิ์ของ "${name}" เรียบร้อยแล้ว`); await loadStaffList(); }
+};
+
+// -------------------------------------------------------------
+// 🔑 3.5 บังคับรีเซ็ตรหัสผ่านรายบุคคล
+// -------------------------------------------------------------
+window.forceResetPassword = async (id, name) => {
+    if (!confirm(`ต้องการบังคับให้ "${name}" เปลี่ยนรหัสผ่านใหม่ในการเข้าสู่ระบบครั้งถัดไปใช่หรือไม่?`)) return;
+
+    try {
+        const { error } = await supabase.rpc('force_reset_password', { p_target_id: id });
+        if (error) throw error;
+
+        alert(`ตั้งค่าบังคับเปลี่ยนรหัสผ่านสำหรับ "${name}" เรียบร้อยแล้ว`);
+    } catch (err) {
+        console.error('Force Reset Error:', err);
+        alert('เกิดข้อผิดพลาด: ' + err.message);
+    }
 };
 
 // -------------------------------------------------------------
