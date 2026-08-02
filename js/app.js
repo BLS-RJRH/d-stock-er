@@ -308,29 +308,37 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
 });
 
 // -------------------------------------------------------------
-// 📊 7. Export Executive Report (ปรับปรุงการดึงข้อมูลเพื่อป้องกัน Null ปัดข้อมูลหลุด)
+// 📊 7. Export Executive Report (รองรับกรองช่วงวันที่ + ดึงข้อมูลครบถ้วน)
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
         return toastError('ปฏิเสธสิทธิ์การเข้าถึง', 'คุณไม่มีสิทธิ์ดาวน์โหลดรายงานภาพรวมระบบ');
     }
 
-    try {
-        // 1. ดึงข้อมูล Transactions ทั้งหมด
-        const { data: transactions, error: transError } = await supabase
-            .from('stock_transactions')
-            .select('*')
-            .order('created_at', { ascending: false });
+    const startDate = document.getElementById('exportStartDate')?.value;
+    const endDate = document.getElementById('exportEndDate')?.value;
 
+    try {
+        // Query กรองวันที่
+        let transQuery = supabase.from('stock_transactions').select('*').order('created_at', { ascending: false });
+        let distQuery = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
+
+        if (startDate) {
+            transQuery = transQuery.gte('created_at', `${startDate}T00:00:00`);
+            distQuery = distQuery.gte('created_at', `${startDate}T00:00:00`);
+        }
+
+        if (endDate) {
+            transQuery = transQuery.lte('created_at', `${endDate}T23:59:59`);
+            distQuery = distQuery.lte('created_at', `${endDate}T23:59:59`);
+        }
+
+        const { data: transactions, error: transError } = await transQuery;
         if (transError) throw transError;
 
-        // 2. ดึงข้อมูล Distribution Logs
-        const { data: distributions } = await supabase
-            .from('distribution_logs')
-            .select('*')
-            .order('created_at', { ascending: false });
+        const { data: distributions } = await distQuery;
 
-        // 3. ดึงรายชื่อ Profile เพื่อ Map รายชื่อผู้ใช้งาน
+        // ดึงรายชื่อ Profile มาแปลง ID เป็นชื่อผู้ใช้
         const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
         const userMap = {};
         (profiles || []).forEach(p => {
@@ -358,7 +366,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
             .map(t => ({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'การดำเนินการ': t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
-                'ผู้รับ/ผู้ส่งคืน ': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ'),
+                'ผู้รับ/ผู้ส่งคืน': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ'),
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ': t.note || '-'
             }));
@@ -372,7 +380,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
             distributeList.push({
                 'วันที่-เวลา': new Date(d.created_at).toLocaleString('th-TH'),
                 'ผู้แจก (Staff)': d.distributor_id ? userMap[d.distributor_id] : (d.from_user_id ? userMap[d.from_user_id] : 'ผู้ใช้งานระบบ'),
-                'ผู้รับ ': d.recipient_info || d.note || '-',
+                'ผู้รับ': d.recipient_info || d.note || '-',
                 'จำนวนที่แจก (Set)': d.quantity
             });
         });
@@ -381,7 +389,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
             distributeList.push({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'ผู้แจก (Staff)': t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ',
-                'ผู้รับ ': t.note || '-',
+                'ผู้รับ': t.note || '-',
                 'จำนวนที่แจก (Set)': t.quantity
             });
         });
@@ -389,7 +397,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
         const sheetDistribute = XLSX.utils.json_to_sheet(distributeList.length ? distributeList : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
         XLSX.utils.book_append_sheet(workbook, sheetDistribute, "3. ประวัติการแจกใช้งาน");
 
-        const dateStr = new Date().toISOString().slice(0, 10);
+        const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
         XLSX.writeFile(workbook, `D-Stock_ER_Executive_Report_${dateStr}.xlsx`);
         
         toastSuccess('ส่งออกรายงานสำเร็จ 📥', 'ระบบดาวน์โหลดไฟล์ Excel 3 Tabs ให้เรียบร้อยแล้ว');
