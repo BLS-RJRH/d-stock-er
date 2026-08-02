@@ -358,7 +358,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
             .map(t => ({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'การดำเนินการ': t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
-                'ผู้รับ/ผู้ส่งคืน (Staff)': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ'),
+                'ผู้รับ/ผู้ส่งคืน ': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ'),
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ': t.note || '-'
             }));
@@ -372,7 +372,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
             distributeList.push({
                 'วันที่-เวลา': new Date(d.created_at).toLocaleString('th-TH'),
                 'ผู้แจก (Staff)': d.distributor_id ? userMap[d.distributor_id] : (d.from_user_id ? userMap[d.from_user_id] : 'ผู้ใช้งานระบบ'),
-                'ผู้รับ / HN / จุดงาน': d.recipient_info || d.note || '-',
+                'ผู้รับ ': d.recipient_info || d.note || '-',
                 'จำนวนที่แจก (Set)': d.quantity
             });
         });
@@ -381,7 +381,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
             distributeList.push({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'ผู้แจก (Staff)': t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ',
-                'ผู้รับ / HN / จุดงาน': t.note || '-',
+                'ผู้รับ ': t.note || '-',
                 'จำนวนที่แจก (Set)': t.quantity
             });
         });
