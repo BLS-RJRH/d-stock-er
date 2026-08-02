@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>D-Stock ER - ระบบบริหารจัดการสต๊อกเวชภัณฑ์ห้องฉุกเฉิน</title>
+    <title>D-Stock ER - ระบบบริหารจัดการสต๊อกชุด gift set</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script> tailwind.config = { corePlugins: { preflight: true } } </script>
@@ -33,7 +33,7 @@
                      class="h-12 object-contain mix-blend-multiply">
                 <div>
                     <h1 class="text-xl font-bold text-slate-800">🏥 D-Stock ER</h1>
-                    <p class="text-xs text-slate-500">ระบบบริหารจัดการสต๊อกเวชภัณฑ์ห้องฉุกเฉิน</p>
+                    <p class="text-xs text-slate-500">ระบบบริหารจัดการสต๊อกชุด gift set</p>
                 </div>
             </div>
 
@@ -69,7 +69,7 @@
         <div id="centralPanel" class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-4">
             <div class="flex justify-between items-center border-b pb-3">
                 <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <span>📦 คลังใหญ่ (Central Stock)</span>
+                    <span>📦 คลังใหญ่ ER (Central Stock)</span>
                 </h2>
                 <span class="text-xs font-semibold bg-red-100 text-red-800 px-2.5 py-1 rounded-full">Center Staff / Admin</span>
             </div>
@@ -110,7 +110,7 @@
         <div id="subPanel" class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-4">
             <div class="flex justify-between items-center border-b pb-3">
                 <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <span>🩺 คลังย่อย ER (Sub Stock)</span>
+                    <span>🩺 คลังย่อย EMS (Sub Stock)</span>
                 </h2>
                 <span class="text-xs font-semibold bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full">Sub Staff / Admin</span>
             </div>
@@ -129,7 +129,7 @@
                 <div class="md:col-span-2 p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
                     <h3 class="text-xs font-bold text-slate-700">📝 ลงบันทึกการแจกใช้งาน (Distribute)</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <input type="text" id="recipientInfo" placeholder="ผู้รับ / เลข HN / จุดงาน" class="sm:col-span-2 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <input type="text" id="recipientInfo" placeholder="ผู้รับ เช่น ร่วมกตัญญู ป่อเต็กตึ๊ง เป็นต้น" class="sm:col-span-2 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <input type="number" id="distributeQty" placeholder="จำนวน (Set)" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                     <button id="btnDistribute" type="button" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition active:scale-95">
