@@ -43,8 +43,13 @@ async function initProductionUser() {
         
         if (nameElem) nameElem.innerText = profile.full_name || session.user.email;
         if (badgeElem) {
-            badgeElem.innerText = profile.role === 'SUPER_ADMIN' ? '👑 Super Admin' : 
-                                 profile.role === 'CENTRAL_ADMIN' ? '📦 Central Admin' : '🩺 Sub Staff';
+            const roleNames = {
+                'SUPER_ADMIN': '👑 Super Admin',
+                'ADMIN': '🛡️ Admin',
+                'CENTER_STAFF': '📦 Center Staff',
+                'SUB_STAFF': '🩺 Sub Staff'
+            };
+            badgeElem.innerText = roleNames[profile.role] || profile.role;
         }
 
         // 1.4 ปรับปรุงการแสดงผล UI ตาม Role จริงของผู้ใช้งาน
@@ -60,7 +65,7 @@ async function initProductionUser() {
 }
 
 // -------------------------------------------------------------
-// 🎨 2. ควบคุมการแสดงผล UI บน Dashboard ตาม Role จริง
+// 🎨 2. ควบคุมการแสดงผล UI บน Dashboard ตาม 4 Role ใหม่
 // -------------------------------------------------------------
 function setupUIByRole(role) {
     const centralPanel = document.getElementById('centralPanel');
@@ -68,22 +73,26 @@ function setupUIByRole(role) {
     const exportSection = document.getElementById('btnExportExcel')?.closest('div.bg-white');
     const btnManageStaff = document.getElementById('btnManageStaff');
 
+    // 2.1 ปุ่มจัดการ Staff -> แสดงเฉพาะ SUPER_ADMIN เท่านั้น
     if (role === 'SUPER_ADMIN') {
+        btnManageStaff?.classList.remove('hidden');
+    } else {
+        btnManageStaff?.classList.add('hidden');
+    }
+
+    // 2.2 การเข้าถึงแผงควบคุมและปุ่ม Executive Report
+    if (role === 'SUPER_ADMIN' || role === 'ADMIN') {
         centralPanel?.classList.remove('hidden');
         subPanel?.classList.remove('hidden');
-        exportSection?.classList.remove('hidden');  // ✅ Super Admin เห็นปุ่ม Export
-        btnManageStaff?.classList.remove('hidden'); // ✅ Super Admin เห็นปุ่ม จัดการ Staff
-    } else if (role === 'CENTRAL_ADMIN') {
+        exportSection?.classList.remove('hidden'); // ✅ Super Admin & Admin เห็นปุ่ม Export
+    } else if (role === 'CENTER_STAFF') {
         centralPanel?.classList.remove('hidden');
         subPanel?.classList.add('hidden');
-        exportSection?.classList.add('hidden');     // ❌ Central Admin ซ่อนปุ่ม Export
-        btnManageStaff?.classList.add('hidden');    // ❌ Central Admin ซ่อนปุ่ม จัดการ Staff
-    } else {
-        // SUB_STAFF
+        exportSection?.classList.add('hidden');    // ❌ Center Staff ซ่อนปุ่ม Export
+    } else if (role === 'SUB_STAFF') {
         centralPanel?.classList.add('hidden');
         subPanel?.classList.remove('hidden');
-        exportSection?.classList.add('hidden');     // ❌ Sub Staff ซ่อนปุ่ม Export
-        btnManageStaff?.classList.add('hidden');    // ❌ Sub Staff ซ่อนปุ่ม จัดการ Staff
+        exportSection?.classList.add('hidden');    // ❌ Sub Staff ซ่อนปุ่ม Export
     }
 }
 
@@ -104,7 +113,7 @@ async function loadStockData() {
 
     if (centralElem) centralElem.innerText = centralQty;
 
-    // เตือนเมื่อคลังใหญ่ต่ำกว่าเกณฑ์ (< 20 Set)
+    // เตือนเมื่อคลังใหญ่ต่ำกว่าเกณฑ์ (<= 30 Set)
     if (centralCard) {
         if (centralQty <= MIN_CENTRAL_STOCK) {
             centralCard.className = "bg-red-100 border-2 border-red-500 p-4 rounded-xl animate-pulse";
@@ -129,7 +138,7 @@ async function loadStockData() {
 
     if (subElem) subElem.innerText = subQty;
 
-    // เตือนเมื่อคลังย่อยต่ำกว่าเกณฑ์ (< 5 Set)
+    // เตือนเมื่อคลังย่อยต่ำกว่าเกณฑ์ (<= 10 Set)
     if (subCard) {
         if (subQty <= MIN_SUB_STOCK) {
             subCard.className = "bg-amber-100 border-2 border-amber-500 p-4 rounded-xl animate-pulse";
@@ -279,11 +288,11 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
 });
 
 // -------------------------------------------------------------
-// 📊 7. Export Executive Report เป็น Excel 3 Tabs (เฉพาะ Super Admin เท่านั้น)
+// 📊 7. Export Executive Report เป็น Excel 3 Tabs (สำหรับ SUPER_ADMIN และ ADMIN)
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
-    if (!CURRENT_USER || CURRENT_USER.role !== 'SUPER_ADMIN') {
-        return alert('🚫 คุณไม่มีสิทธิ์เข้าถึงและดาวน์โหลดรายงานสรุประบบ (สิทธิ์เฉพาะ Super Admin เท่านั้น)');
+    if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
+        return alert('🚫 คุณไม่มีสิทธิ์เข้าถึงและดาวน์โหลดรายงานสรุประบบ');
     }
 
     try {
