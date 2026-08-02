@@ -1,8 +1,8 @@
 import { supabase } from './supabaseClient.js';
 
-// ดึง User ID ของ Super Admin ที่เราสร้างไว้ใน Database มาใช้จำลองตัวละครทดสอบ
 let CURRENT_USER_ID = '';
 
+// 1. เริ่มต้นระบบ ดึง ID User มาทดสอบ
 async function initUser() {
     const { data: profiles } = await supabase.from('profiles').select('id').limit(1);
     if (profiles && profiles.length > 0) {
@@ -11,7 +11,7 @@ async function initUser() {
     }
 }
 
-// 1. ดึงข้อมูลสต๊อก Real-time มาแสดง
+// 2. ดึงข้อมูลสต๊อก Real-time
 async function loadStockData() {
     // ดึงสต๊อกคลังใหญ่
     const { data: central } = await supabase.from('central_stock').select('current_qty').eq('item_id', 1).single();
@@ -21,17 +21,77 @@ async function loadStockData() {
 
     // ดึงสต๊อกคลังย่อย
     const { data: sub } = await supabase.from('sub_stock').select('current_qty').eq('item_id', 1).single();
-    if (sub && sub.length > 0) {
-        document.getElementById('subQtyDisplay').innerText = sub[0].current_qty;
+    if (sub) {
+        document.getElementById('subQtyDisplay').innerText = sub.current_qty;
     } else {
         document.getElementById('subQtyDisplay').innerText = 0;
     }
 }
 
-// 2. ปุ่มจ่ายของจากคลังใหญ่ -> คลังย่อย (Issue)
+// -------------------------------------------------------------
+// 🔄 ระบบสลับ Role (ซ่อน/แสดงหน้าต่างตาม Role)
+// -------------------------------------------------------------
+const roleSelector = document.getElementById('roleSelector');
+const centralPanel = document.getElementById('centralPanel');
+const subPanel = document.getElementById('subPanel');
+
+roleSelector.addEventListener('change', (e) => {
+    const selectedRole = e.target.value;
+
+    if (selectedRole === 'CENTRAL_ADMIN') {
+        // แสดงเฉพาะคลังใหญ่
+        centralPanel.classList.remove('hidden');
+        subPanel.classList.add('hidden');
+    } else if (selectedRole === 'SUB_STAFF') {
+        // แสดงเฉพาะคลังย่อย
+        centralPanel.classList.add('hidden');
+        subPanel.classList.remove('hidden');
+    } else if (selectedRole === 'SUPER_ADMIN') {
+        // แสดงทั้งหมด
+        centralPanel.classList.remove('hidden');
+        subPanel.classList.remove('hidden');
+    }
+});
+
+// -------------------------------------------------------------
+// 📦 ฝั่งคลังใหญ่ (Central Stock Functions)
+// -------------------------------------------------------------
+
+// ➕ ปุ่มเติมของเข้าคลังใหญ่ (Restock)
+document.getElementById('btnRestock').addEventListener('click', async () => {
+    const qty = parseInt(document.getElementById('restockQty').value);
+    if (!qty || qty <= 0) return alert('กรุณาระบุจำนวนที่ต้องการเติม');
+
+    // ดึงยอดปัจจุบันในคลังใหญ่ก่อน
+    const { data: central } = await supabase.from('central_stock').select('current_qty').eq('item_id', 1).single();
+    const newQty = (central ? central.current_qty : 0) + qty;
+
+    // อัปเดตยอดใหม่เข้าคลังใหญ่
+    const { error } = await supabase.from('central_stock').update({ 
+        current_qty: newQty,
+        updated_at: new Date()
+    }).eq('item_id', 1);
+
+    if (error) {
+        alert('เกิดข้อผิดพลาดในการเติมของ: ' + error.message);
+    } else {
+        // บันทึก Audit Log
+        await supabase.from('audit_logs').insert([{
+            user_id: CURRENT_USER_ID,
+            action: 'RESTOCK_CENTRAL',
+            details: { added_qty: qty, total_qty: newQty }
+        }]);
+
+        alert(`เติมของเข้าคลังใหญ่สำเร็จ +${qty} Set!`);
+        document.getElementById('restockQty').value = '';
+        loadStockData();
+    }
+});
+
+// ➡️ ปุ่มจ่ายของออกให้คลังย่อย (Issue)
 document.getElementById('btnIssue').addEventListener('click', async () => {
     const qty = parseInt(document.getElementById('issueQty').value);
-    if (!qty || qty <= 0) return alert('กรุณาระบุจำนวนที่ถูกต้อง');
+    if (!qty || qty <= 0) return alert('กรุณาระบุจำนวนที่ต้องการจ่าย');
 
     const { error } = await supabase.rpc('issue_stock_to_sub', {
         p_item_id: 1,
@@ -43,13 +103,17 @@ document.getElementById('btnIssue').addEventListener('click', async () => {
     if (error) {
         alert('เกิดข้อผิดพลาด: ' + error.message);
     } else {
-        alert('จ่ายของสำเร็จ!');
+        alert('จ่ายของออกสำเร็จ!');
         document.getElementById('issueQty').value = '';
         loadStockData();
     }
 });
 
-// 3. ปุ่มลงบันทึกการแจกของ (Distribute)
+// -------------------------------------------------------------
+// 🩺 ฝั่งคลังย่อย (Sub Stock Functions)
+// -------------------------------------------------------------
+
+// 📝 ปุ่มลงบันทึกการแจกของ (Distribute)
 document.getElementById('btnDistribute').addEventListener('click', async () => {
     const recipient = document.getElementById('recipientInfo').value;
     const qty = parseInt(document.getElementById('distributeQty').value);
@@ -73,7 +137,7 @@ document.getElementById('btnDistribute').addEventListener('click', async () => {
     }
 });
 
-// 4. ปุ่มแจ้งคืนของเข้าคลัง (Return)
+// ↩️ ปุ่มส่งคืนคลังใหญ่ (Return)
 document.getElementById('btnReturn').addEventListener('click', async () => {
     const qty = parseInt(document.getElementById('returnQty').value);
     if (!qty || qty <= 0) return alert('กรุณาระบุจำนวนที่ต้องการคืน');
@@ -93,7 +157,7 @@ document.getElementById('btnReturn').addEventListener('click', async () => {
     }
 });
 
-// 5. ปุ่ม Export รายงานภาษาไทยเป็น Excel (.xlsx)
+// 📊 ปุ่ม Export รายงานเป็น Excel (.xlsx) ภาษาไทย
 document.getElementById('btnExportExcel').addEventListener('click', async () => {
     const { data, error } = await supabase.from('distribution_logs').select('*');
     if (error) return alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
@@ -110,5 +174,5 @@ document.getElementById('btnExportExcel').addEventListener('click', async () => 
     XLSX.writeFile(workbook, `D-Stock_ER_Report.xlsx`);
 });
 
-// เริ่มทำงานเมื่อเปิดหน้า
+// เรียกทำงานเมื่อโหลดหน้าเว็บ
 initUser();
