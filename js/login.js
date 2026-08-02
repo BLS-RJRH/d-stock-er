@@ -1,14 +1,13 @@
 import { supabase } from './supabaseClient.js';
 
 // -------------------------------------------------------------
-// 1. ตรวจสอบ Session เดิม (ถ้าล็อกอินอยู่แล้วให้เด้งไป Dashboard ทันที)
+// 1. ตรวจสอบ Session เดิม (ถ้าล็อกอินอยู่แล้วให้พาไปตามสิทธิ์)
 // -------------------------------------------------------------
 async function checkExistingSession() {
     try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (session && !error) {
-            // ล็อกอินค้างไว้อยู่ นำทางไปหน้า Dashboard
-            window.location.href = './dashboard.html';
+            await redirectUserByRole(session.user.id);
         }
     } catch (err) {
         console.warn('⚠️ เกิดข้อผิดพลาดในการตรวจสอบ Session:', err.message);
@@ -16,23 +15,42 @@ async function checkExistingSession() {
 }
 
 // -------------------------------------------------------------
-// 2. ควบคุมการเข้าสู่ระบบเมื่อกดปุ่มในฟอร์ม
+// 2. ควบคุมการนำทาง (Redirect Flow)
+// -------------------------------------------------------------
+async function redirectUserByRole(userId) {
+    const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role, is_first_login')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (error || !profile) {
+        alert('ไม่พบข้อมูล Profile ผู้ใช้ กรุณาติดต่อ Admin');
+        await supabase.auth.signOut();
+        return;
+    }
+
+    // 🔒 SUPER_ADMIN ข้ามการบังคับเปลี่ยนรหัสผ่านครั้งแรกเสมอ
+    if (profile.role === 'SUPER_ADMIN' || profile.is_first_login === false) {
+        window.location.href = './dashboard.html';
+    } else {
+        // 🔑 Staff บทบาทอื่นที่ล็อกอินครั้งแรก -> ไปหน้าตั้งรหัสใหม่
+        window.location.href = './reset-password.html';
+    }
+}
+
+// -------------------------------------------------------------
+// 3. ฟอร์ม Login
 // -------------------------------------------------------------
 document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const btn = document.getElementById('btnLogin');
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
 
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
+    if (!email || !password) return alert('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
 
-    if (!email || !password) {
-        return alert('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
-    }
-
-    // ล็อกปุ่มป้องกันการกดซ้ำระหว่างรอ Response
     btn.disabled = true;
     btn.innerText = 'กำลังเข้าสู่ระบบ...';
 
@@ -42,12 +60,9 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
             password: password
         });
 
-        if (error) {
-            throw error;
-        }
+        if (error) throw error;
 
-        // เข้าสู่ระบบสำเร็จ ส่งไปยังหน้า Dashboard
-        window.location.href = './dashboard.html';
+        await redirectUserByRole(data.user.id);
 
     } catch (err) {
         console.error('Login Error:', err);
@@ -57,5 +72,4 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     }
 });
 
-// ตรวจสอบ Session ทันทีที่โหลดสคริปต์
 checkExistingSession();
