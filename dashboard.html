@@ -168,8 +168,8 @@
             </div>
         </div>
 
-        <!-- ------------------------------------------------------------- -->
-<!-- 5. แผง Export Executive Report (เลือกหัวข้อ Checkbox + ช่วงวันที่) -->
+<!-- ------------------------------------------------------------- -->
+<!-- 5. แผง Export Executive Report (ให้ User ติ๊กเลือกเอง) -->
 <!-- ------------------------------------------------------------- -->
 <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-4">
     <div>
@@ -179,24 +179,24 @@
         <p class="text-xs text-slate-500 mt-0.5">เลือกหัวข้อรายงานที่ต้องการ (เลือกได้มากกว่า 1 ข้อ) และช่วงวันที่ แล้วกดดาวน์โหลดไฟล์ Excel</p>
     </div>
 
-    <!-- 🎯 Checkboxes เลือกหัวข้อรายงาน -->
+    <!-- 🎯 Checkboxes เลือกหัวข้อรายงาน (ไม่มีการเลือกเริ่มต้นไว้) -->
     <div class="pt-2 border-t space-y-2">
         <label class="block text-xs font-semibold text-slate-700">📑 เลือกหัวข้อรายงานที่ต้องการดึงข้อมูล:</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             <label class="flex items-center gap-2 p-2.5 bg-slate-50 border rounded-xl cursor-pointer hover:bg-slate-100 transition">
-                <input type="checkbox" id="chkRestock" checked class="w-4 h-4 accent-emerald-600 rounded">
+                <input type="checkbox" id="chkRestock" class="w-4 h-4 accent-emerald-600 rounded">
                 <span class="text-xs font-medium text-slate-700">📦 1. เติมเข้าคลังใหญ่</span>
             </label>
             <label class="flex items-center gap-2 p-2.5 bg-slate-50 border rounded-xl cursor-pointer hover:bg-slate-100 transition">
-                <input type="checkbox" id="chkTransfer" checked class="w-4 h-4 accent-emerald-600 rounded">
+                <input type="checkbox" id="chkTransfer" class="w-4 h-4 accent-emerald-600 rounded">
                 <span class="text-xs font-medium text-slate-700">🔄 2. จ่าย-คืน คลังย่อย</span>
             </label>
             <label class="flex items-center gap-2 p-2.5 bg-slate-50 border rounded-xl cursor-pointer hover:bg-slate-100 transition">
-                <input type="checkbox" id="chkDistribute" checked class="w-4 h-4 accent-emerald-600 rounded">
+                <input type="checkbox" id="chkDistribute" class="w-4 h-4 accent-emerald-600 rounded">
                 <span class="text-xs font-medium text-slate-700">📝 3. ประวัติการแจกใช้งาน</span>
             </label>
             <label class="flex items-center gap-2 p-2.5 bg-slate-50 border rounded-xl cursor-pointer hover:bg-slate-100 transition">
-                <input type="checkbox" id="chkAudit" checked class="w-4 h-4 accent-emerald-600 rounded">
+                <input type="checkbox" id="chkAudit" class="w-4 h-4 accent-emerald-600 rounded">
                 <span class="text-xs font-medium text-slate-700">📋 4. บันทึกตรวจนับประจำวัน</span>
             </label>
         </div>
