@@ -1,82 +1,170 @@
 import { supabase } from './supabaseClient.js';
 
-// 1. ดึงรายชื่อ Staff ทั้งหมดมาแสดง
-async function loadStaffList() {
-    const tbody = document.getElementById('staffTableBody');
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-slate-400">กำลังโหลดข้อมูล...</td></tr>';
+// -------------------------------------------------------------
+// 🔒 1. ตรวจสอบสิทธิ์สิทธิ์การเข้าถึง (เฉพาะ Super Admin เท่านั้น)
+// -------------------------------------------------------------
+async function checkSuperAdminAuth() {
+    try {
+        const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
 
-    const { data: staffList, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
+        if (sessionErr || !session) {
+            alert('กรุณาเข้าสู่ระบบก่อนใช้งาน');
+            window.location.href = './index.html';
+            return;
+        }
 
-    if (error) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-red-500">เกิดข้อผิดพลาด: ${error.message}</td></tr>`;
-        return;
+        const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+        if (profileErr || profile?.role !== 'SUPER_ADMIN') {
+            alert('🚫 คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการเจ้าหน้าที่ (สิทธิ์เฉพาะ Super Admin เท่านั้น)');
+            window.location.href = './dashboard.html';
+            return;
+        }
+
+        // ผ่านการตรวจสอบสิทธิ์ ดึงรายการ Staff มาแสดง
+        await loadStaffList();
+
+    } catch (err) {
+        console.error('Auth Check Error:', err);
+        alert('เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์: ' + err.message);
+        window.location.href = './dashboard.html';
     }
-
-    if (!staffList || staffList.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-slate-400">ยังไม่มีรายชื่อ Staff ในระบบ</td></tr>';
-        return;
-    }
-
-    const roleBadges = {
-        'CENTRAL_ADMIN': '<span class="bg-red-100 text-red-800 text-xs px-2.5 py-0.5 rounded-full font-medium">📦 Admin คลังใหญ่</span>',
-        'SUB_STAFF': '<span class="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-medium">🩺 Staff คลังย่อย</span>',
-        'SUPER_ADMIN': '<span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-0.5 rounded-full font-medium">👑 Super Admin</span>'
-    };
-
-    tbody.innerHTML = staffList.map(item => `
-        <tr class="border-b hover:bg-slate-50 transition">
-            <td class="px-4 py-3 font-medium text-slate-800">${item.staff_code || '-'}</td>
-            <td class="px-4 py-3 font-semibold text-slate-700">${item.full_name || 'ไม่ระบุชื่อ'}</td>
-            <td class="px-4 py-3">${roleBadges[item.role] || item.role}</td>
-            <td class="px-4 py-3 text-xs text-slate-400 font-mono">${item.id}</td>
-            <td class="px-4 py-3 text-center">
-                <button onclick="deleteStaff('${item.id}')" class="text-xs text-red-600 hover:text-red-800 font-medium">ลบ</button>
-            </td>
-        </tr>
-    `).join('');
 }
 
-// 2. บันทึก Staff ใหม่
-document.getElementById('staffForm').addEventListener('submit', async (e) => {
+// -------------------------------------------------------------
+// 📋 2. ดึงรายชื่อ Staff ทั้งหมดจากตาราง profiles
+// -------------------------------------------------------------
+async function loadStaffList() {
+    const tableBody = document.getElementById('staffTableBody');
+    const countBadge = document.getElementById('staffCount');
+
+    if (!tableBody) return;
+
+    try {
+        const { data: staffList, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (countBadge) countBadge.innerText = `${staffList ? staffList.length : 0} คน`;
+
+        if (!staffList || staffList.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-slate-400">ยังไม่มีรายชื่อเจ้าหน้าที่ในระบบ</td></tr>`;
+            return;
+        }
+
+        tableBody.innerHTML = staffList.map(staff => {
+            let roleBadge = '';
+            if (staff.role === 'SUPER_ADMIN') {
+                roleBadge = `<span class="bg-purple-100 text-purple-700 text-xs px-2.5 py-0.5 rounded-full font-medium">👑 Super Admin</span>`;
+            } else if (staff.role === 'CENTRAL_ADMIN') {
+                roleBadge = `<span class="bg-red-100 text-red-700 text-xs px-2.5 py-0.5 rounded-full font-medium">📦 Central Admin</span>`;
+            } else {
+                roleBadge = `<span class="bg-blue-100 text-blue-700 text-xs px-2.5 py-0.5 rounded-full font-medium">🩺 Sub Staff</span>`;
+            }
+
+            return `
+                <tr class="hover:bg-slate-50 border-b">
+                    <td class="p-3 font-mono text-xs text-slate-500">${staff.staff_code || '-'}</td>
+                    <td class="p-3 font-medium text-slate-800">${staff.full_name || 'ไม่ระบุชื่อ'}</td>
+                    <td class="p-3">${roleBadge}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="deleteStaff('${staff.id}', '${staff.full_name}')" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg border border-red-200 transition active:scale-95">
+                            🗑️ ลบ
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error('Load Staff Error:', err);
+        tableBody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-red-500">เกิดข้อผิดพลาดในการดึงข้อมูล: ${err.message}</td></tr>`;
+    }
+}
+
+// -------------------------------------------------------------
+// ➕ 3. ฟอร์มสร้าง Staff ใหม่ (สมัครผ่าน Supabase Auth + Trigger Profile)
+// -------------------------------------------------------------
+document.getElementById('createStaffForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const staffCode = document.getElementById('staffCode').value.trim();
-    const fullName = document.getElementById('fullName').value.trim();
-    const role = document.getElementById('staffRole').value;
+    const btn = document.getElementById('btnSaveStaff');
+    const staffCodeInput = document.getElementById('staffCode');
+    const fullNameInput = document.getElementById('fullName');
+    const emailInput = document.getElementById('staffEmail');
+    const passwordInput = document.getElementById('staffPassword');
+    const roleInput = document.getElementById('staffRole');
 
-    // สุ่ม UUID สำหรับ Test Mode
-    const newUuid = crypto.randomUUID();
+    const staffCode = staffCodeInput.value.trim();
+    const fullName = fullNameInput.value.trim();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    const role = roleInput.value;
 
-    const { error } = await supabase.from('profiles').insert([{
-        id: newUuid,
-        staff_code: staffCode,
-        full_name: fullName,
-        role: role
-    }]);
+    btn.disabled = true;
+    btn.innerText = 'กำลังบันทึกข้อมูล...';
 
-    if (error) {
-        alert('เกิดข้อผิดพลาดในการเพิ่ม Staff: ' + error.message);
-    } else {
-        alert(`เพิ่ม Staff "${fullName}" สำเร็จ!`);
-        document.getElementById('staffForm').reset();
-        loadStaffList();
+    try {
+        const { data, error } = await supabase.auth.signUp({
+            email: email,
+            password: password,
+            options: {
+                data: {
+                    full_name: fullName,
+                    staff_code: staffCode,
+                    role: role
+                }
+            }
+        });
+
+        if (error) throw error;
+
+        alert(`สร้างบัญชีเจ้าหน้าที่ ${fullName} สำเร็จ!\nรหัสผ่านเริ่มต้น: ${password}`);
+        
+        // รีเซ็ตฟอร์ม
+        document.getElementById('createStaffForm').reset();
+        if (passwordInput) passwordInput.value = 'Abc@1234';
+        
+        await loadStaffList();
+
+    } catch (err) {
+        console.error('Create Staff Error:', err);
+        alert('เกิดข้อผิดพลาดในการสร้างบัญชี: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'บันทึกข้อมูล Staff';
     }
 });
 
-// 3. ฟังก์ชันลบ Staff
-window.deleteStaff = async function(id) {
-    if (!confirm('คุณต้องการลบรายชื่อ Staff นี้ใช่หรือไม่?')) return;
+// -------------------------------------------------------------
+// 🗑️ 4. ฟังก์ชันลบ Staff ออกจากระบบ
+// -------------------------------------------------------------
+window.deleteStaff = async (id, name) => {
+    if (!confirm(`คุณต้องการลบเจ้าหน้าที่ "${name}" ออกจากระบบใช่หรือไม่?`)) return;
 
-    const { error } = await supabase.from('profiles').delete().eq('id', id);
-    if (error) {
-        alert('เกิดข้อผิดพลาดในการลบ: ' + error.message);
-    } else {
-        loadStaffList();
+    try {
+        const { error } = await supabase
+            .from('profiles')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+
+        alert('ลบเจ้าหน้าที่เรียบร้อยแล้ว');
+        await loadStaffList();
+
+    } catch (err) {
+        console.error('Delete Staff Error:', err);
+        alert('เกิดข้อผิดพลาดในการลบ: ' + err.message);
     }
 };
 
-// โหลดรายชื่อเมื่อเปิดหน้าเว็บ
-loadStaffList();
+// ตรวจสอบสิทธิ์ Super Admin ทันทีเมื่อโหลดสคริปต์
+checkSuperAdminAuth();
