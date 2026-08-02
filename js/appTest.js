@@ -4,7 +4,9 @@ import { supabase } from './supabaseClient.js';
 const FALLBACK_USER_ID = '00000000-0000-0000-0000-000000000001';
 let CURRENT_USER_ID = '';
 
+// -------------------------------------------------------------
 // 1. เริ่มต้นระบบ ดึง ID User มาใช้ในการทดสอบ
+// -------------------------------------------------------------
 async function initUser() {
     try {
         const { data: profiles, error } = await supabase
@@ -28,10 +30,12 @@ async function initUser() {
     }
 }
 
-// 2. ดึงข้อมูลสต๊อกมาแสดงบน Dashboard
+// -------------------------------------------------------------
+// 2. ดึงข้อมูลสต๊อกมาแสดงบน Dashboard แบบ Real-time
+// -------------------------------------------------------------
 async function loadStockData() {
     // 📦 ดึงสต๊อกคลังใหญ่
-    const { data: central, error: centralError } = await supabase
+    const { data: central } = await supabase
         .from('central_stock')
         .select('current_qty')
         .eq('item_id', 1)
@@ -43,7 +47,7 @@ async function loadStockData() {
     }
 
     // 🩺 ดึงสต๊อกคลังย่อย (ดึงยอดล่าสุดที่มีในระบบเพื่อรองรับ Test Mode)
-    const { data: sub, error: subError } = await supabase
+    const { data: sub } = await supabase
         .from('sub_stock')
         .select('current_qty')
         .eq('item_id', 1)
@@ -58,11 +62,12 @@ async function loadStockData() {
 }
 
 // -------------------------------------------------------------
-// 🔄 ระบบสลับ Role (ซ่อน/แสดงหน้าต่างตาม Role)
+// 🔄 3. ระบบสลับ Role (ซ่อน/แสดง Panel และปุ่ม Export ตาม Role)
 // -------------------------------------------------------------
 const roleSelector = document.getElementById('roleSelector');
 const centralPanel = document.getElementById('centralPanel');
 const subPanel = document.getElementById('subPanel');
+const exportSection = document.getElementById('btnExportExcel')?.closest('div.bg-white');
 
 if (roleSelector) {
     roleSelector.addEventListener('change', (e) => {
@@ -71,18 +76,21 @@ if (roleSelector) {
         if (selectedRole === 'CENTRAL_ADMIN') {
             centralPanel?.classList.remove('hidden');
             subPanel?.classList.add('hidden');
+            exportSection?.classList.remove('hidden'); // Admin เห็นปุ่ม Export
         } else if (selectedRole === 'SUB_STAFF') {
             centralPanel?.classList.add('hidden');
             subPanel?.classList.remove('hidden');
+            exportSection?.classList.add('hidden');    // ❌ Staff ทั่วไป ซ่อนปุ่ม Export
         } else if (selectedRole === 'SUPER_ADMIN') {
             centralPanel?.classList.remove('hidden');
             subPanel?.classList.remove('hidden');
+            exportSection?.classList.remove('hidden'); // Super Admin เห็นปุ่ม Export
         }
     });
 }
 
 // -------------------------------------------------------------
-// 📦 ฝั่งคลังใหญ่ (Central Stock Functions)
+// 📦 4. ฝั่งคลังใหญ่ (Central Stock Functions)
 // -------------------------------------------------------------
 
 // ➕ ปุ่มเติมของเข้าคลังใหญ่ (Restock)
@@ -135,7 +143,7 @@ document.getElementById('btnIssue')?.addEventListener('click', async () => {
 });
 
 // -------------------------------------------------------------
-// 🩺 ฝั่งคลังย่อย (Sub Stock Functions)
+// 🩺 5. ฝั่งคลังย่อย (Sub Stock Functions)
 // -------------------------------------------------------------
 
 // 📝 ปุ่มลงบันทึกการแจกของ (Distribute)
@@ -189,31 +197,93 @@ document.getElementById('btnReturn')?.addEventListener('click', async () => {
 });
 
 // -------------------------------------------------------------
-// 📊 ปุ่ม Export รายงานเป็น Excel (.xlsx)
+// 📊 6. ปุ่ม Export รายงานภาพรวมระบบเป็น Excel แยก Tabs (.xlsx) สำหรับ Executive Report
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
-    const { data, error } = await supabase
-        .from('distribution_logs')
-        .select('*')
-        .order('created_at', { ascending: false });
+    const currentRole = document.getElementById('roleSelector')?.value;
 
-    if (error) return alert('เกิดข้อผิดพลาดในการดึงข้อมูล: ' + error.message);
-
-    if (!data || data.length === 0) {
-        return alert('ยังไม่มีข้อมูลการแจกของในระบบ');
+    if (currentRole === 'SUB_STAFF') {
+        return alert('🚫 คุณไม่มีสิทธิ์เข้าถึงรายงานสรุประบบ (เฉพาะ Admin / Super Admin เท่านั้น)');
     }
 
-    const formattedData = data.map(row => ({
-        'วันที่-เวลา': new Date(row.created_at).toLocaleString('th-TH'),
-        'ผู้รับ / HN / จุดงาน': row.recipient_info || '-',
-        'จำนวนที่แจก (Set)': row.quantity
-    }));
+    try {
+        // 1. ดึงข้อมูลประวัติ Transaction ทั้งหมด
+        const { data: transactions, error: transError } = await supabase
+            .from('stock_transactions')
+            .select(`
+                created_at,
+                type,
+                quantity,
+                note,
+                from_user:from_user_id (full_name, staff_code),
+                to_user:to_user_id (full_name, staff_code)
+            `)
+            .order('created_at', { ascending: false });
 
-    const worksheet = XLSX.utils.json_to_sheet(formattedData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "รายงานการแจกของ ER");
-    XLSX.writeFile(workbook, `D-Stock_ER_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        if (transError) throw transError;
+
+        // 2. ดึงข้อมูลการแจกของ (Distribution Logs)
+        const { data: distributions, error: distError } = await supabase
+            .from('distribution_logs')
+            .select(`
+                created_at,
+                recipient_info,
+                quantity,
+                distributor:distributor_id (full_name, staff_code)
+            `)
+            .order('created_at', { ascending: false });
+
+        if (distError) throw distError;
+
+        // --- สร้าง Workbook ของ SheetJS ---
+        const workbook = XLSX.utils.book_new();
+
+        // 🟢 TAB 1: รายการเติมเข้าคลังใหญ่ (RESTOCK)
+        const restockData = (transactions || [])
+            .filter(t => t.type === 'RESTOCK')
+            .map(t => ({
+                'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
+                'ประเภท': 'เติมเข้าคลังใหญ่',
+                'จำนวน (Set)': t.quantity,
+                'หมายเหตุ / เลขที่อ้างอิง': t.note || '-'
+            }));
+        const sheetRestock = XLSX.utils.json_to_sheet(restockData.length ? restockData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+        XLSX.utils.book_append_sheet(workbook, sheetRestock, "1. เติมเข้าคลังใหญ่");
+
+        // 🔵 TAB 2: รายการจ่ายให้คลังย่อย (ISSUE & RETURN)
+        const transferData = (transactions || [])
+            .filter(t => t.type === 'ISSUE' || t.type === 'RETURN')
+            .map(t => ({
+                'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
+                'การดำเนินการ': t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
+                'ผู้รับ/ผู้ส่งคืน (Staff)': t.to_user?.full_name ? `${t.to_user.full_name} (${t.to_user.staff_code || '-'})` : (t.from_user?.full_name || 'ผู้ใช้งานระบบ'),
+                'จำนวน (Set)': t.quantity,
+                'หมายเหตุ': t.note || '-'
+            }));
+        const sheetTransfer = XLSX.utils.json_to_sheet(transferData.length ? transferData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+        XLSX.utils.book_append_sheet(workbook, sheetTransfer, "2. จ่าย-คืน คลังย่อย");
+
+        // 🟡 TAB 3: รายการแจกของใช้งานจริง (DISTRIBUTE)
+        const distributeData = (distributions || []).map(d => ({
+            'วันที่-เวลา': new Date(d.created_at).toLocaleString('th-TH'),
+            'ผู้แจก (Staff)': d.distributor?.full_name ? `${d.distributor.full_name} (${d.distributor.staff_code || '-'})` : 'ผู้ใช้งานระบบ',
+            'ผู้รับ / HN / จุดงาน': d.recipient_info || '-',
+            'จำนวนที่แจก (Set)': d.quantity
+        }));
+        const sheetDistribute = XLSX.utils.json_to_sheet(distributeData.length ? distributeData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+        XLSX.utils.book_append_sheet(workbook, sheetDistribute, "3. ประวัติการแจกใช้งาน");
+
+        // --- ดาวน์โหลดไฟล์ Excel ---
+        const dateStr = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(workbook, `D-Stock_ER_Executive_Report_${dateStr}.xlsx`);
+
+    } catch (err) {
+        console.error('Export Error:', err);
+        alert('เกิดข้อผิดพลาดในการดึงรายงาน: ' + err.message);
+    }
 });
 
+// -------------------------------------------------------------
 // เริ่มต้นเรียกทำงานทันทีเมื่อโหลดสคริปต์
+// -------------------------------------------------------------
 initUser();
