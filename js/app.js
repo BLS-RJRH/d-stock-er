@@ -228,6 +228,7 @@ document.getElementById('btnDistribute')?.addEventListener('click', async () => 
     if (!recipient) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุผู้รับ / เลข HN / จุดงาน');
     if (!qty || qty <= 0) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่ต้องการแจก');
 
+    // 💡 ส่งค่าชื่อผู้รับเข้าฐานข้อมูลตรงๆ โดยยกเลิกคำว่า "แจกให้: "
     const { error } = await supabase.rpc('distribute_item', {
         p_item_id: 1,
         p_recipient_info: recipient,
@@ -308,35 +309,27 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
 });
 
 // -------------------------------------------------------------
-// 📊 7. Export Executive Report (ตัดคำว่า "แจกให้: " ออกจากช่องผู้รับ)
+// 📊 7. Export Executive Report (อ่านค่าจาก Checkbox)
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
         return toastError('ปฏิเสธสิทธิ์การเข้าถึง', 'คุณไม่มีสิทธิ์ดาวน์โหลดรายงานภาพรวมระบบ');
     }
 
+    const isRestockChecked = document.getElementById('chkRestock')?.checked;
+    const isTransferChecked = document.getElementById('chkTransfer')?.checked;
+    const isDistributeChecked = document.getElementById('chkDistribute')?.checked;
+    const isAuditChecked = document.getElementById('chkAudit')?.checked;
+
+    if (!isRestockChecked && !isTransferChecked && !isDistributeChecked && !isAuditChecked) {
+        return toastWarning('กรุณาเลือกหัวข้อ', 'โปรดเลือกหัวข้อรายงานอย่างน้อย 1 รายการ');
+    }
+
     const startDate = document.getElementById('exportStartDate')?.value;
     const endDate = document.getElementById('exportEndDate')?.value;
 
     try {
-        let transQuery = supabase.from('stock_transactions').select('*').order('created_at', { ascending: false });
-        let distQuery = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
-
-        if (startDate) {
-            transQuery = transQuery.gte('created_at', `${startDate}T00:00:00`);
-            distQuery = distQuery.gte('created_at', `${startDate}T00:00:00`);
-        }
-
-        if (endDate) {
-            transQuery = transQuery.lte('created_at', `${endDate}T23:59:59`);
-            distQuery = distQuery.lte('created_at', `${endDate}T23:59:59`);
-        }
-
-        const { data: transactions, error: transError } = await transQuery;
-        if (transError) throw transError;
-
-        const { data: distributions } = await distQuery;
-
+        // ดึงรายชื่อ Profile มาแปะชื่อผู้ใช้งาน
         const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
         const userMap = {};
         (profiles || []).forEach(p => {
@@ -345,64 +338,84 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 
         const workbook = XLSX.utils.book_new();
 
-        // 🟢 TAB 1: รายการเติมเข้าคลังใหญ่ (RESTOCK)
-        const restockData = (transactions || [])
-            .filter(t => t.type === 'RESTOCK')
-            .map(t => ({
+        // 🟢 1. เติมเข้าคลังใหญ่ (RESTOCK)
+        if (isRestockChecked) {
+            let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: restockList } = await query;
+            const restockData = (restockList || []).map(t => ({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'ประเภท': 'เติมเข้าคลังใหญ่',
                 'ผู้ดำเนินการ': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ระบบ / Admin'),
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ / เลขที่อ้างอิง': t.note || '-'
             }));
-        const sheetRestock = XLSX.utils.json_to_sheet(restockData.length ? restockData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
-        XLSX.utils.book_append_sheet(workbook, sheetRestock, "1. เติมเข้าคลังใหญ่");
+            const sheet = XLSX.utils.json_to_sheet(restockData.length ? restockData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            XLSX.utils.book_append_sheet(workbook, sheet, "1. เติมเข้าคลังใหญ่");
+        }
 
-        // 🔵 TAB 2: รายการจ่ายให้คลังย่อย (ISSUE & RETURN)
-        const transferData = (transactions || [])
-            .filter(t => t.type === 'ISSUE' || t.type === 'RETURN')
-            .map(t => ({
+        // 🔵 2. จ่าย-คืน คลังย่อย (ISSUE & RETURN)
+        if (isTransferChecked) {
+            let query = supabase.from('stock_transactions').select('*').in('type', ['ISSUE', 'RETURN']).order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: transferList } = await query;
+            const transferData = (transferList || []).map(t => ({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'การดำเนินการ': t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
                 'ผู้รับ/ผู้ส่งคืน': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ'),
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ': t.note || '-'
             }));
-        const sheetTransfer = XLSX.utils.json_to_sheet(transferData.length ? transferData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
-        XLSX.utils.book_append_sheet(workbook, sheetTransfer, "2. จ่าย-คืน คลังย่อย");
+            const sheet = XLSX.utils.json_to_sheet(transferData.length ? transferData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            XLSX.utils.book_append_sheet(workbook, sheet, "2. จ่าย-คืน คลังย่อย");
+        }
 
-        // 🟡 TAB 3: รายการแจกของใช้งานจริง (DISTRIBUTE - คลีนตัดคำว่า "แจกให้: " ออก)
-        let distributeList = [];
-        
-        (distributions || []).forEach(d => {
-            const rawRecipient = d.recipient_info || d.note || '-';
-            const cleanRecipient = rawRecipient.replace(/^แจกให้:\s*/, ''); // ✂️ ตัดคำว่า "แจกให้: " ออก
-            distributeList.push({
-                'วันที่-เวลา': new Date(d.created_at).toLocaleString('th-TH'),
-                'ผู้แจก (Staff)': d.distributor_id ? userMap[d.distributor_id] : (d.from_user_id ? userMap[d.from_user_id] : 'ผู้ใช้งานระบบ'),
-                'ผู้รับ': cleanRecipient,
-                'จำนวนที่แจก (Set)': d.quantity
+        // 🟡 3. ประวัติการแจกใช้งาน (DISTRIBUTE)
+        if (isDistributeChecked) {
+            let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: distList } = await query;
+            const distributeData = (distList || []).map(d => {
+                const rawRecipient = d.recipient_info || d.note || '-';
+                const cleanRecipient = rawRecipient.replace(/^แจกให้:\s*/, '');
+                return {
+                    'วันที่-เวลา': new Date(d.created_at).toLocaleString('th-TH'),
+                    'ผู้แจก (Staff)': d.distributor_id ? userMap[d.distributor_id] : (d.from_user_id ? userMap[d.from_user_id] : 'ผู้ใช้งานระบบ'),
+                    'ผู้รับ': cleanRecipient,
+                    'จำนวนที่แจก (Set)': d.quantity
+                };
             });
-        });
+            const sheet = XLSX.utils.json_to_sheet(distributeData.length ? distributeData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            XLSX.utils.book_append_sheet(workbook, sheet, "3. ประวัติการแจกใช้งาน");
+        }
 
-        (transactions || []).filter(t => t.type === 'DISTRIBUTE').forEach(t => {
-            const rawNote = t.note || '-';
-            const cleanNote = rawNote.replace(/^แจกให้:\s*/, ''); // ✂️ ตัดคำว่า "แจกให้: " ออก
-            distributeList.push({
-                'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
-                'ผู้แจก (Staff)': t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ',
-                'ผู้รับ': cleanNote,
-                'จำนวนที่แจก (Set)': t.quantity
-            });
-        });
+        // 📋 4. บันทึกตรวจนับประจำวัน (DAILY AUDIT)
+        if (isAuditChecked) {
+            let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
 
-        const sheetDistribute = XLSX.utils.json_to_sheet(distributeList.length ? distributeList : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
-        XLSX.utils.book_append_sheet(workbook, sheetDistribute, "3. ประวัติการแจกใช้งาน");
+            const { data: auditList } = await query;
+            const auditData = (auditList || []).map(a => ({
+                'วันที่-เวลา ตรวจนับ': new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
+                'ผู้ตรวจนับ (Staff)': a.recorder_id ? userMap[a.recorder_id] : (a.created_by ? userMap[a.created_by] : 'ผู้ใช้งานระบบ'),
+                'จำนวนที่นับได้จริง (Set)': a.actual_qty ?? a.quantity ?? 0,
+                'หมายเหตุ': a.note || '-'
+            }));
+            const sheet = XLSX.utils.json_to_sheet(auditData.length ? auditData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            XLSX.utils.book_append_sheet(workbook, sheet, "4. สรุปยอดนับประจำวัน");
+        }
 
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
-        XLSX.writeFile(workbook, `D-Stock_ER_Executive_Report_${dateStr}.xlsx`);
+        XLSX.writeFile(workbook, `D-Stock_ER_Report_${dateStr}.xlsx`);
         
-        toastSuccess('ส่งออกรายงานสำเร็จ 📥', 'ระบบดาวน์โหลดไฟล์ Excel 3 Tabs ให้เรียบร้อยแล้ว');
+        toastSuccess('ส่งออกรายงานสำเร็จ 📥', 'ดาวน์โหลดไฟล์ Excel สรุปข้อมูลหัวข้อที่เลือกเรียบร้อยแล้ว');
 
     } catch (err) {
         console.error('Export Error:', err);
