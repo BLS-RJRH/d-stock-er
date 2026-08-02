@@ -111,7 +111,7 @@ window.updateStaffRole = async (id, newRole, name) => {
     else { toastSuccess('อัปเดตสิทธิ์สำเร็จ', `ปรับสิทธิ์การใช้งานของ "${name}" เรียบร้อยแล้ว`); await loadStaffList(); }
 };
 
-// 3.5 รีเซ็ตรหัสผ่านเป็น Abc@1234 และบังคับให้ผู้ใช้เปลี่ยนรหัสในครั้งถัดไป
+// 3.5 รีเซ็ตรหัสผ่านเป็น Abc@1234 รายบุคคล
 window.forceResetPassword = async (id, name) => {
     const confirmRes = await Swal.fire({
         title: 'รีเซ็ตรหัสผ่านเป็นค่าเริ่มต้น?',
