@@ -9,9 +9,13 @@
     <script> tailwind.config = { corePlugins: { preflight: true } } </script>
     <!-- SheetJS CDN สำหรับ Export Excel -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- Google Font Prompt -->
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style> body { font-family: 'Prompt', sans-serif; } </style>
+    <!-- 🌟 SweetAlert2 CDN สำหรับ Popup แจ้งเตือนสวยๆ -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- 🅰️ Google Sans Font CDN -->
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Product+Sans:wght@400;700&display=swap" rel="stylesheet">
+    <style> 
+        body { font-family: 'Product Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif; } 
+    </style>
 </head>
 <body class="bg-slate-100 min-h-screen p-4 md:p-8">
 
@@ -55,7 +59,7 @@
                     🚪 ออกจากระบบ
                 </button>
             </div>
-        </div> <!-- ✅ ปิด div ของ Header ตรงนี้ครับ -->
+        </div>
 
         <!-- ------------------------------------------------------------- -->
         <!-- 2. แผงควบคุม คลังใหญ่ (Central Stock Panel) -->
