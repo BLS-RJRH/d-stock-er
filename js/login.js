@@ -1,8 +1,17 @@
 import { supabase } from './supabaseClient.js';
 
-// -------------------------------------------------------------
-// 1. ตรวจสอบ Session เดิม (ถ้าล็อกอินอยู่แล้วให้พาไปตามสิทธิ์)
-// -------------------------------------------------------------
+// 🟢 ฟังก์ชัน SweetAlert2 สวยๆ
+const toastError = (title, text) => {
+    Swal.fire({
+        icon: 'error',
+        title: title,
+        text: text,
+        confirmButtonColor: '#EF4444',
+        customClass: { popup: 'rounded-2xl' }
+    });
+};
+
+// 1. ตรวจสอบ Session เดิม
 async function checkExistingSession() {
     try {
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -14,9 +23,7 @@ async function checkExistingSession() {
     }
 }
 
-// -------------------------------------------------------------
 // 2. ควบคุมการนำทาง (Redirect Flow)
-// -------------------------------------------------------------
 async function redirectUserByRole(userId) {
     const { data: profile, error } = await supabase
         .from('profiles')
@@ -25,23 +32,19 @@ async function redirectUserByRole(userId) {
         .maybeSingle();
 
     if (error || !profile) {
-        alert('ไม่พบข้อมูล Profile ผู้ใช้ กรุณาติดต่อ Admin');
+        toastError('เข้าสู่ระบบไม่สำเร็จ', 'ไม่พบข้อมูล Profile ผู้ใช้ กรุณาติดต่อ Admin');
         await supabase.auth.signOut();
         return;
     }
 
-    // 🔒 SUPER_ADMIN ข้ามการบังคับเปลี่ยนรหัสผ่านครั้งแรกเสมอ
     if (profile.role === 'SUPER_ADMIN' || profile.is_first_login === false) {
         window.location.href = './dashboard.html';
     } else {
-        // 🔑 Staff บทบาทอื่นที่ล็อกอินครั้งแรก -> ไปหน้าตั้งรหัสใหม่
         window.location.href = './reset-password.html';
     }
 }
 
-// -------------------------------------------------------------
 // 3. ฟอร์ม Login
-// -------------------------------------------------------------
 document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -49,7 +52,9 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
 
-    if (!email || !password) return alert('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
+    if (!email || !password) {
+        return toastError('กรุณากรอกข้อมูล', 'โปรดกรอกอีเมลและรหัสผ่านให้ครบถ้วน');
+    }
 
     btn.disabled = true;
     btn.innerText = 'กำลังเข้าสู่ระบบ...';
@@ -66,7 +71,7 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
 
     } catch (err) {
         console.error('Login Error:', err);
-        alert('เข้าสู่ระบบไม่สำเร็จ: อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+        toastError('เข้าสู่ระบบไม่สำเร็จ', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
         btn.disabled = false;
         btn.innerText = 'เข้าสู่ระบบ';
     }
