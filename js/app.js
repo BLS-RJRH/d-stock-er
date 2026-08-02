@@ -1,52 +1,116 @@
 import { supabase } from './supabaseClient.js';
 
-// ค่า UUID สำรองสำหรับ Test Mode (หากยังไม่มีข้อมูลใน profiles)
-const FALLBACK_USER_ID = '00000000-0000-0000-0000-000000000001';
-let CURRENT_USER_ID = '';
+// ตัวแปรเก็บข้อมูล User ที่ล็อกอินปัจจุบัน
+let CURRENT_USER = null;
+
+// 🚨 เกณฑ์เตือนสต๊อกต่ำ (Low Stock Thresholds)
+const MIN_CENTRAL_STOCK = 20;
+const MIN_SUB_STOCK = 5;
 
 // -------------------------------------------------------------
-// 1. เริ่มต้นระบบ ดึง ID User มาใช้ในการทดสอบ
+// 🔒 1. ตรวจสอบ Session การเข้าสู่ระบบ และดึง Profile จริง
 // -------------------------------------------------------------
-async function initUser() {
+async function initProductionUser() {
     try {
-        const { data: profiles, error } = await supabase
-            .from('profiles')
-            .select('id')
-            .order('created_at', { ascending: true })
-            .limit(1);
+        // 1.1 ตรวจสอบว่ามี Session การล็อกอินอยู่หรือไม่
+        const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
 
-        if (error) throw error;
-
-        if (profiles && profiles.length > 0) {
-            CURRENT_USER_ID = profiles[0].id;
-        } else {
-            CURRENT_USER_ID = FALLBACK_USER_ID;
+        if (sessionErr || !session) {
+            alert('กรุณาเข้าสู่ระบบก่อนใช้งาน');
+            window.location.href = './index.html';
+            return;
         }
-    } catch (err) {
-        console.warn('⚠️ ไม่สามารถดึง Profile ได้ ใช้ Fallback ID สำหรับทดสอบแทน:', err.message);
-        CURRENT_USER_ID = FALLBACK_USER_ID;
-    } finally {
+
+        // 1.2 ดึงข้อมูล Profile ของคนๆ นั้นจากตาราง profiles
+        const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+        if (profileErr || !profile) {
+            alert('ไม่พบข้อมูลสิทธิ์ผู้ใช้งาน กรุณาติดต่อ Admin');
+            await supabase.auth.signOut();
+            window.location.href = './index.html';
+            return;
+        }
+
+        CURRENT_USER = profile;
+
+        // 1.3 แสดงชื่อผู้ใช้งานและ Role บน Header หน้าจอ
+        const nameElem = document.getElementById('userFullName');
+        const badgeElem = document.getElementById('userRoleBadge');
+        
+        if (nameElem) nameElem.innerText = profile.full_name || session.user.email;
+        if (badgeElem) {
+            badgeElem.innerText = profile.role === 'SUPER_ADMIN' ? '👑 Super Admin' : 
+                                 profile.role === 'CENTRAL_ADMIN' ? '📦 Central Admin' : '🩺 Sub Staff';
+        }
+
+        // 1.4 ปรับปรุงการแสดงผล UI ตาม Role จริงของผู้ใช้งาน
+        setupUIByRole(profile.role);
+
+        // 1.5 โหลดข้อมูลสต๊อก Real-time
         await loadStockData();
+
+    } catch (err) {
+        console.error('Init Production Error:', err);
+        alert('เกิดข้อผิดพลาดในการเริ่มต้นระบบ: ' + err.message);
     }
 }
 
 // -------------------------------------------------------------
-// 2. ดึงข้อมูลสต๊อกมาแสดงบน Dashboard แบบ Real-time
+// 🎨 2. ควบคุมการแสดงผล UI บน Dashboard ตาม Role จริง
+// -------------------------------------------------------------
+function setupUIByRole(role) {
+    const centralPanel = document.getElementById('centralPanel');
+    const subPanel = document.getElementById('subPanel');
+    const exportSection = document.getElementById('btnExportExcel')?.closest('div.bg-white');
+
+    if (role === 'SUPER_ADMIN') {
+        centralPanel?.classList.remove('hidden');
+        subPanel?.classList.remove('hidden');
+        exportSection?.classList.remove('hidden'); // ✅ Super Admin เห็นปุ่ม Export
+    } else if (role === 'CENTRAL_ADMIN') {
+        centralPanel?.classList.remove('hidden');
+        subPanel?.classList.add('hidden');
+        exportSection?.classList.add('hidden');    // ❌ Central Admin ซ่อนปุ่ม Export
+    } else {
+        // SUB_STAFF
+        centralPanel?.classList.add('hidden');
+        subPanel?.classList.remove('hidden');
+        exportSection?.classList.add('hidden');    // ❌ Sub Staff ซ่อนปุ่ม Export
+    }
+}
+
+// -------------------------------------------------------------
+// 📦 3. ดึงข้อมูลสต๊อก Real-time + Low Stock Visual Alert
 // -------------------------------------------------------------
 async function loadStockData() {
-    // 📦 ดึงสต๊อกคลังใหญ่
+    // 3.1 ดึงและตรวจเช็กสต๊อกคลังใหญ่
     const { data: central } = await supabase
         .from('central_stock')
         .select('current_qty')
         .eq('item_id', 1)
         .maybeSingle();
 
+    const centralQty = central ? central.current_qty : 0;
     const centralElem = document.getElementById('centralQtyDisplay');
-    if (centralElem) {
-        centralElem.innerText = central ? central.current_qty : 0;
+    const centralCard = centralElem?.closest('.bg-red-50') || centralElem?.parentElement?.parentElement;
+
+    if (centralElem) centralElem.innerText = centralQty;
+
+    // เตือนเมื่อคลังใหญ่ต่ำกว่าเกณฑ์ (< 20 Set)
+    if (centralCard) {
+        if (centralQty <= MIN_CENTRAL_STOCK) {
+            centralCard.className = "bg-red-100 border-2 border-red-500 p-4 rounded-xl animate-pulse";
+            if (centralElem) centralElem.innerHTML = `${centralQty} <span class="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full ml-2">⚠️ สต๊อกต่ำวิกฤต</span>`;
+        } else {
+            centralCard.className = "bg-red-50 border border-red-100 p-4 rounded-xl";
+        }
     }
 
-    // 🩺 ดึงสต๊อกคลังย่อย (ดึงยอดล่าสุดที่มีในระบบเพื่อรองรับ Test Mode)
+    // 3.2 ดึงและตรวจเช็กสต๊อกคลังย่อย
     const { data: sub } = await supabase
         .from('sub_stock')
         .select('current_qty')
@@ -55,45 +119,28 @@ async function loadStockData() {
         .limit(1)
         .maybeSingle();
 
+    const subQty = sub ? sub.current_qty : 0;
     const subElem = document.getElementById('subQtyDisplay');
-    if (subElem) {
-        subElem.innerText = sub ? sub.current_qty : 0;
+    const subCard = subElem?.closest('.bg-blue-50') || subElem?.parentElement?.parentElement;
+
+    if (subElem) subElem.innerText = subQty;
+
+    // เตือนเมื่อคลังย่อยต่ำกว่าเกณฑ์ (< 5 Set)
+    if (subCard) {
+        if (subQty <= MIN_SUB_STOCK) {
+            subCard.className = "bg-amber-100 border-2 border-amber-500 p-4 rounded-xl animate-pulse";
+            if (subElem) subElem.innerHTML = `${subQty} <span class="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">⚠️ สต๊อกย่อยใกล้หมด</span>`;
+        } else {
+            subCard.className = "bg-blue-50 border border-blue-100 p-4 rounded-xl";
+        }
     }
 }
 
 // -------------------------------------------------------------
-// 🔄 3. ระบบสลับ Role (ซ่อน/แสดง Panel และปุ่ม Export ตาม Role)
-// -------------------------------------------------------------
-const roleSelector = document.getElementById('roleSelector');
-const centralPanel = document.getElementById('centralPanel');
-const subPanel = document.getElementById('subPanel');
-const exportSection = document.getElementById('btnExportExcel')?.closest('div.bg-white');
-
-if (roleSelector) {
-    roleSelector.addEventListener('change', (e) => {
-        const selectedRole = e.target.value;
-
-        if (selectedRole === 'CENTRAL_ADMIN') {
-            centralPanel?.classList.remove('hidden');
-            subPanel?.classList.add('hidden');
-            exportSection?.classList.remove('hidden'); // Admin เห็นปุ่ม Export
-        } else if (selectedRole === 'SUB_STAFF') {
-            centralPanel?.classList.add('hidden');
-            subPanel?.classList.remove('hidden');
-            exportSection?.classList.add('hidden');    // ❌ Staff ทั่วไป ซ่อนปุ่ม Export
-        } else if (selectedRole === 'SUPER_ADMIN') {
-            centralPanel?.classList.remove('hidden');
-            subPanel?.classList.remove('hidden');
-            exportSection?.classList.remove('hidden'); // Super Admin เห็นปุ่ม Export
-        }
-    });
-}
-
-// -------------------------------------------------------------
-// 📦 4. ฝั่งคลังใหญ่ (Central Stock Functions)
+// 🏢 4. ฟังก์ชันฝั่งคลังใหญ่ (Central Stock Functions)
 // -------------------------------------------------------------
 
-// ➕ ปุ่มเติมของเข้าคลังใหญ่ (Restock)
+// ➕ เติมของเข้าคลังใหญ่ (Restock)
 document.getElementById('btnRestock')?.addEventListener('click', async () => {
     const qtyInput = document.getElementById('restockQty');
     const qty = parseInt(qtyInput.value);
@@ -103,7 +150,7 @@ document.getElementById('btnRestock')?.addEventListener('click', async () => {
     const { error } = await supabase.rpc('restock_central', {
         p_item_id: 1,
         p_quantity: qty,
-        p_note: 'เติมของเข้าคลังใหญ่ (Test Mode)'
+        p_note: 'เติมของเข้าคลังใหญ่'
     });
 
     if (error) {
@@ -116,18 +163,16 @@ document.getElementById('btnRestock')?.addEventListener('click', async () => {
     }
 });
 
-// ➡️ ปุ่มจ่ายของออกให้คลังย่อย (Issue)
+// ➡️ จ่ายของออกให้คลังย่อย (Issue)
 document.getElementById('btnIssue')?.addEventListener('click', async () => {
     const qtyInput = document.getElementById('issueQty');
     const qty = parseInt(qtyInput.value);
 
     if (!qty || qty <= 0) return alert('กรุณาระบุจำนวนที่ต้องการจ่าย');
 
-    const targetUserId = CURRENT_USER_ID || FALLBACK_USER_ID;
-
     const { error } = await supabase.rpc('issue_stock_to_sub', {
         p_item_id: 1,
-        p_to_user_id: targetUserId,
+        p_to_user_id: CURRENT_USER.id,
         p_quantity: qty,
         p_note: 'จ่ายของให้สต๊อกย่อย'
     });
@@ -143,10 +188,10 @@ document.getElementById('btnIssue')?.addEventListener('click', async () => {
 });
 
 // -------------------------------------------------------------
-// 🩺 5. ฝั่งคลังย่อย (Sub Stock Functions)
+// 🩺 5. ฟังก์ชันฝั่งคลังย่อย (Sub Stock Functions)
 // -------------------------------------------------------------
 
-// 📝 ปุ่มลงบันทึกการแจกของ (Distribute)
+// 📝 ลงบันทึกการแจกของ (Distribute)
 document.getElementById('btnDistribute')?.addEventListener('click', async () => {
     const recipientInput = document.getElementById('recipientInfo');
     const qtyInput = document.getElementById('distributeQty');
@@ -173,7 +218,7 @@ document.getElementById('btnDistribute')?.addEventListener('click', async () => 
     }
 });
 
-// ↩️ ปุ่มส่งคืนคลังใหญ่ (Return)
+// ↩️ ส่งคืนคลังใหญ่ (Return)
 document.getElementById('btnReturn')?.addEventListener('click', async () => {
     const qtyInput = document.getElementById('returnQty');
     const qty = parseInt(qtyInput.value);
@@ -183,7 +228,7 @@ document.getElementById('btnReturn')?.addEventListener('click', async () => {
     const { error } = await supabase.rpc('return_stock_to_central', {
         p_item_id: 1,
         p_quantity: qty,
-        p_note: 'ส่งคืนคลังใหญ่ (Test Mode)'
+        p_note: 'ส่งคืนคลังใหญ่'
     });
 
     if (error) {
@@ -197,13 +242,44 @@ document.getElementById('btnReturn')?.addEventListener('click', async () => {
 });
 
 // -------------------------------------------------------------
-// 📊 6. ปุ่ม Export รายงานภาพรวมระบบเป็น Excel แยก Tabs (.xlsx) สำหรับ Executive Report
+// 📋 6. บันทึกการตรวจนับสต๊อกประจำวัน (Daily Stock Audit)
+// -------------------------------------------------------------
+document.getElementById('btnSaveDailyCount')?.addEventListener('click', async () => {
+    const actualQtyInput = document.getElementById('actualCountQty');
+    const noteInput = document.getElementById('countNote');
+    const actualQty = parseInt(actualQtyInput.value);
+    const note = noteInput.value.trim() || 'ตรวจนับประจำวันปกติ';
+
+    if (isNaN(actualQty) || actualQty < 0) {
+        return alert('กรุณาระบุจำนวนที่นับได้จริง');
+    }
+
+    if (!confirm(`ยืนยันการบันทึกยอดนับจริง ${actualQty} Set หรือไม่?\n(ระบบจะปรับยอดคงเหลือให้เป็น ${actualQty} Set ทันที)`)) {
+        return;
+    }
+
+    const { error } = await supabase.rpc('record_daily_count', {
+        p_actual_qty: actualQty,
+        p_note: note
+    });
+
+    if (error) {
+        console.error('Daily Count Error:', error);
+        alert('เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
+    } else {
+        alert('บันทึกยอดตรวจนับและปรับยอดระบบเรียบร้อยแล้ว!');
+        actualQtyInput.value = '';
+        noteInput.value = '';
+        await loadStockData();
+    }
+});
+
+// -------------------------------------------------------------
+// 📊 7. Export Executive Report เป็น Excel 3 Tabs (เฉพาะ Super Admin เท่านั้น)
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
-    const currentRole = document.getElementById('roleSelector')?.value;
-
-    if (currentRole === 'SUB_STAFF') {
-        return alert('🚫 คุณไม่มีสิทธิ์เข้าถึงรายงานสรุประบบ (เฉพาะ Admin / Super Admin เท่านั้น)');
+    if (!CURRENT_USER || CURRENT_USER.role !== 'SUPER_ADMIN') {
+        return alert('🚫 คุณไม่มีสิทธิ์เข้าถึงและดาวน์โหลดรายงานสรุประบบ (สิทธิ์เฉพาะ Super Admin เท่านั้น)');
     }
 
     try {
@@ -284,6 +360,16 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// เริ่มต้นเรียกทำงานทันทีเมื่อโหลดสคริปต์
+// 🚪 8. ปุ่ม Logout (ออกจากระบบ)
 // -------------------------------------------------------------
-initUser();
+document.getElementById('btnLogout')?.addEventListener('click', async () => {
+    if (confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) {
+        await supabase.auth.signOut();
+        window.location.href = './index.html';
+    }
+});
+
+// -------------------------------------------------------------
+// เริ่มต้นตรวจสอบสิทธิ์ทันทีเมื่อโหลดสคริปต์
+// -------------------------------------------------------------
+initProductionUser();
