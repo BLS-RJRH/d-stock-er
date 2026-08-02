@@ -83,7 +83,8 @@ window.updateStaffRole = async (id, newRole, name) => {
 };
 
 // -------------------------------------------------------------
-// 4. บันทึกสร้าง Staff
+// -------------------------------------------------------------
+// 4. บันทึกสร้าง Staff (ใช้ Admin API + RPC Cast Enum)
 // -------------------------------------------------------------
 document.getElementById('createStaffForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -99,24 +100,36 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
     btn.innerText = 'กำลังบันทึกข้อมูล...';
 
     try {
-        const { data, error } = await supabase.rpc('admin_create_staff', {
-            p_email: email,
-            p_password: password,
-            p_full_name: fullName,
-            p_staff_code: staffCode,
-            p_role: role
+        // 1. สร้าง User ใน Auth
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            password: password,
+            email_confirm: true,
+            user_metadata: { full_name: fullName, staff_code: staffCode, role: role }
         });
 
-        if (error) throw error;
-        if (data && !data.success) throw new Error(data.message);
+        if (authError) throw authError;
 
-        alert(`สร้างบัญชี ${fullName} สำเร็จ!`);
+        // 2. บันทึกลงตาราง profiles ผ่าน RPC เพื่อ Cast เป็น Enum user_role
+        if (authData.user) {
+            const { error: profileError } = await supabase.rpc('create_staff_profile', {
+                p_id: authData.user.id,
+                p_full_name: fullName,
+                p_staff_code: staffCode,
+                p_role_str: role
+            });
+
+            if (profileError) throw profileError;
+        }
+
+        alert(`สร้างบัญชีเจ้าหน้าที่ ${fullName} สำเร็จ!`);
         document.getElementById('createStaffForm').reset();
         document.getElementById('staffPassword').value = 'Abc@1234';
         await loadStaffList();
 
     } catch (err) {
-        alert('เกิดข้อผิดพลาด: ' + (err.message || String(err)));
+        console.error('Create Staff Error:', err);
+        alert('เกิดข้อผิดพลาดในการสร้างบัญชี: ' + (err.message || String(err)));
     } finally {
         btn.disabled = false;
         btn.innerText = 'บันทึกข้อมูล Staff';
