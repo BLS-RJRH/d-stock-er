@@ -87,7 +87,7 @@ async function loadStaffList() {
             </td>
             <td class="p-3 text-center space-x-1">
                 <button onclick="forceResetPassword('${staff.id}', '${staff.full_name}')" 
-                        title="บังคับเปลี่ยนรหัสผ่านในครั้งถัดไป" 
+                        title="รีเซ็ตรหัสผ่านกลับเป็นค่าเริ่มต้น Abc@1234" 
                         class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 px-2 py-1 rounded-lg border border-amber-200 transition active:scale-95">
                     🔑 รีเซ็ต
                 </button>
@@ -111,16 +111,16 @@ window.updateStaffRole = async (id, newRole, name) => {
     else { toastSuccess('อัปเดตสิทธิ์สำเร็จ', `ปรับสิทธิ์การใช้งานของ "${name}" เรียบร้อยแล้ว`); await loadStaffList(); }
 };
 
-// 3.5 บังคับรีเซ็ตรหัสผ่านรายบุคคล
+// 3.5 รีเซ็ตรหัสผ่านเป็น Abc@1234 และบังคับให้ผู้ใช้เปลี่ยนรหัสในครั้งถัดไป
 window.forceResetPassword = async (id, name) => {
     const confirmRes = await Swal.fire({
-        title: 'บังคับเปลี่ยนรหัสผ่าน?',
-        text: `ต้องการบังคับให้ "${name}" เปลี่ยนรหัสผ่านใหม่ในการเข้าสู่ระบบครั้งถัดไปใช่หรือไม่?`,
-        icon: 'question',
+        title: 'รีเซ็ตรหัสผ่านเป็นค่าเริ่มต้น?',
+        text: `ต้องการรีเซ็ตรหัสผ่านของ "${name}" กลับเป็น "Abc@1234" ใช่หรือไม่?`,
+        icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#F59E0B',
         cancelButtonColor: '#94A3B8',
-        confirmButtonText: 'ยืนยันบังคับรีเซ็ต',
+        confirmButtonText: 'ยืนยันรีเซ็ตรหัสผ่าน',
         cancelButtonText: 'ยกเลิก',
         customClass: { popup: 'rounded-2xl' }
     });
@@ -128,13 +128,24 @@ window.forceResetPassword = async (id, name) => {
     if (!confirmRes.isConfirmed) return;
 
     try {
-        const { error } = await supabase.rpc('force_reset_password', { p_target_id: id });
+        const { error } = await supabase.rpc('admin_reset_user_password', { 
+            p_target_id: id,
+            p_default_password: 'Abc@1234'
+        });
+
         if (error) throw error;
 
-        toastSuccess('ตั้งค่าสำเร็จ!', `บังคับเปลี่ยนรหัสผ่านสำหรับ "${name}" เรียบร้อยแล้ว`);
+        await Swal.fire({
+            icon: 'success',
+            title: 'รีเซ็ตรหัสผ่านสำเร็จ! 🔑',
+            html: `รีเซ็ตรหัสผ่านของ <b>${name}</b> เรียบร้อยแล้ว<br><br><span class="text-sm bg-slate-100 text-slate-800 px-3 py-1.5 rounded-xl font-mono border border-slate-200 inline-block">รหัสผ่านใหม่: Abc@1234</span>`,
+            confirmButtonColor: '#10B981',
+            customClass: { popup: 'rounded-2xl' }
+        });
+
     } catch (err) {
-        console.error('Force Reset Error:', err);
-        toastError('เกิดข้อผิดพลาด', err.message);
+        console.error('Reset Password Error:', err);
+        toastError('เกิดข้อผิดพลาดในการรีเซ็ตรหัสผ่าน', err.message);
     }
 };
 
