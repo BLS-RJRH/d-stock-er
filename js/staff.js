@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient.js';
 
 // -------------------------------------------------------------
-// 🔒 1. ตรวจสอบสิทธิ์สิทธิ์การเข้าถึง (เฉพาะ Super Admin เท่านั้น)
+// 🔒 1. ตรวจสอบสิทธิ์การเข้าถึง (เฉพาะ Super Admin เท่านั้น)
 // -------------------------------------------------------------
 async function checkSuperAdminAuth() {
     try {
@@ -65,7 +65,6 @@ async function loadStaffList() {
                     <td class="p-3 font-mono text-xs text-slate-500">${staff.staff_code || '-'}</td>
                     <td class="p-3 font-medium text-slate-800">${staff.full_name || 'ไม่ระบุชื่อ'}</td>
                     <td class="p-3">
-                        <!-- 🔄 Dropdown เปลี่ยน Role 4 ระดับ -->
                         <select onchange="updateStaffRole('${staff.id}', this.value, '${staff.full_name}')" 
                                 class="text-xs font-semibold px-2.5 py-1 rounded-lg border outline-none cursor-pointer transition ${
                                     staff.role === 'SUPER_ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-200' :
@@ -116,7 +115,9 @@ window.updateStaffRole = async (id, newRole, name) => {
     }
 };
 
+// -------------------------------------------------------------
 // ➕ 4. ฟอร์มสร้าง Staff ใหม่
+// -------------------------------------------------------------
 document.getElementById('createStaffForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -157,7 +158,6 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
 
     } catch (err) {
         console.error('Detailed Create Staff Error:', err);
-        // 🔍 ดึงข้อความออกมาอย่างละเอียด (ถ้า err.message ไม่มี จะแกะจาก Object)
         const errMsg = err.message || err.error_description || (typeof err === 'object' ? JSON.stringify(err, Object.getOwnPropertyNames(err)) : String(err));
         alert('เกิดข้อผิดพลาดในการสร้างบัญชี: ' + errMsg);
     } finally {
@@ -165,6 +165,7 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
         btn.innerText = 'บันทึกข้อมูล Staff';
     }
 });
+
 // -------------------------------------------------------------
 // 🗑️ 5. ฟังก์ชันลบ Staff ออกจากระบบ
 // -------------------------------------------------------------
