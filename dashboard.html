@@ -21,7 +21,7 @@
             <select id="roleSelector" class="bg-white text-sm font-medium border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-500">
                 <option value="CENTRAL_ADMIN">📦 Admin คลังใหญ่</option>
                 <option value="SUB_STAFF">🩺 Staff คลังย่อย (คนกระจาย Set)</option>
-                <option value="SUPER_ADMIN">👑 Super Admin</option>
+                <option value="SUPER_ADMIN" selected>👑 Super Admin (เห็นทั้งหมด)</option>
             </select>
         </div>
     </div>
@@ -36,12 +36,22 @@
                     <span class="text-xs font-medium text-red-600 uppercase">ยอดคงเหลือคลังใหญ่</span>
                     <div class="text-3xl font-bold text-red-700 mt-1" id="centralQtyDisplay">0 <span class="text-base font-normal">Set</span></div>
                 </div>
+
+                <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-200 space-y-3 flex flex-col justify-center">
+                    <h3 class="text-sm font-semibold text-emerald-800">➕ เติมของเข้าคลังใหญ่ (Restock)</h3>
+                    <div class="flex gap-2">
+                        <input type="number" id="restockQty" placeholder="จำนวนที่รับเข้า" class="px-3 py-2 border rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <button id="btnRestock" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition whitespace-nowrap">
+                            เติมของ
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                 <h3 class="text-sm font-semibold text-slate-700">จ่ายของให้ Staff คลังย่อย (Issue Stock)</h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input type="number" id="issueQty" placeholder="จำนวนที่ต้องการจ่าย" class="px-3 py-2 border rounded-lg text-sm">
+                    <input type="number" id="issueQty" placeholder="จำนวนที่ต้องการจ่าย" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
                     <button id="btnIssue" class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition">
                         จ่ายของออก
                     </button>
@@ -62,8 +72,8 @@
             <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 mb-4">
                 <h3 class="text-sm font-semibold text-slate-700">➕ ลงบันทึกแจกของ (Distribute)</h3>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <input type="text" id="recipientInfo" placeholder="ชื่อผู้รับ / เลข HN / จุดงาน" class="px-3 py-2 border rounded-lg text-sm sm:col-span-2">
-                    <input type="number" id="distributeQty" placeholder="จำนวนที่แจก" class="px-3 py-2 border rounded-lg text-sm">
+                    <input type="text" id="recipientInfo" placeholder="ชื่อผู้รับ / เลข HN / จุดงาน" class="px-3 py-2 border rounded-lg text-sm sm:col-span-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="number" id="distributeQty" placeholder="จำนวนที่แจก" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
                 <button id="btnDistribute" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition">
                     บันทึกการแจกของ
@@ -73,7 +83,7 @@
             <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                 <h3 class="text-sm font-semibold text-slate-700">↩️ คืนของเข้าคลังใหญ่ (Return)</h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input type="number" id="returnQty" placeholder="จำนวนที่ส่งคืน" class="px-3 py-2 border rounded-lg text-sm">
+                    <input type="number" id="returnQty" placeholder="จำนวนที่ส่งคืน" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
                     <button id="btnReturn" class="bg-slate-700 hover:bg-slate-800 text-white font-medium py-2 px-4 rounded-lg text-sm transition">
                         ส่งคืนคลังใหญ่
                     </button>
