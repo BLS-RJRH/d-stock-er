@@ -131,8 +131,8 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
     btn.innerText = 'กำลังบันทึกข้อมูล...';
 
     try {
-        // สร้างบัญชีผ่าน Supabase Auth (Trigger ใน Database จะสร้าง profile ให้ทันที)
-        const { data, error } = await supabase.auth.signUp({
+        // 1. สร้างบัญชีผ่าน Supabase Auth
+        const { data, error: authError } = await supabase.auth.signUp({
             email: email,
             password: password,
             options: {
@@ -144,21 +144,22 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
             }
         });
 
-        if (error) throw error;
+        if (authError) throw authError;
 
         alert(`สร้างบัญชีเจ้าหน้าที่ ${fullName} สำเร็จ!\nรหัสผ่านเริ่มต้น: ${password}`);
         
         document.getElementById('createStaffForm').reset();
         document.getElementById('staffPassword').value = 'Abc@1234';
         
-        // รอแป๊บหนึ่งแล้วโหลดรายการใหม่
         setTimeout(async () => {
             await loadStaffList();
         }, 500);
 
     } catch (err) {
-        console.error('Create Staff Error:', err);
-        alert('เกิดข้อผิดพลาดในการสร้างบัญชี: ' + err.message);
+        console.error('Detailed Create Staff Error:', err);
+        // 🔍 ดึงข้อความออกมาอย่างละเอียด (ถ้า err.message ไม่มี จะแกะจาก Object)
+        const errMsg = err.message || err.error_description || (typeof err === 'object' ? JSON.stringify(err, Object.getOwnPropertyNames(err)) : String(err));
+        alert('เกิดข้อผิดพลาดในการสร้างบัญชี: ' + errMsg);
     } finally {
         btn.disabled = false;
         btn.innerText = 'บันทึกข้อมูล Staff';
