@@ -308,7 +308,7 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
 });
 
 // -------------------------------------------------------------
-// 📊 7. Export Executive Report (รองรับกรองช่วงวันที่ + ดึงข้อมูลครบถ้วน)
+// 📊 7. Export Executive Report (ตัดคำว่า "แจกให้: " ออกจากช่องผู้รับ)
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -319,7 +319,6 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
     const endDate = document.getElementById('exportEndDate')?.value;
 
     try {
-        // Query กรองวันที่
         let transQuery = supabase.from('stock_transactions').select('*').order('created_at', { ascending: false });
         let distQuery = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
 
@@ -338,7 +337,6 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 
         const { data: distributions } = await distQuery;
 
-        // ดึงรายชื่อ Profile มาแปลง ID เป็นชื่อผู้ใช้
         const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
         const userMap = {};
         (profiles || []).forEach(p => {
@@ -373,23 +371,27 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
         const sheetTransfer = XLSX.utils.json_to_sheet(transferData.length ? transferData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
         XLSX.utils.book_append_sheet(workbook, sheetTransfer, "2. จ่าย-คืน คลังย่อย");
 
-        // 🟡 TAB 3: รายการแจกของใช้งานจริง (DISTRIBUTE - รวมข้อมูลจากทั้งสองแหล่ง)
+        // 🟡 TAB 3: รายการแจกของใช้งานจริง (DISTRIBUTE - คลีนตัดคำว่า "แจกให้: " ออก)
         let distributeList = [];
         
         (distributions || []).forEach(d => {
+            const rawRecipient = d.recipient_info || d.note || '-';
+            const cleanRecipient = rawRecipient.replace(/^แจกให้:\s*/, ''); // ✂️ ตัดคำว่า "แจกให้: " ออก
             distributeList.push({
                 'วันที่-เวลา': new Date(d.created_at).toLocaleString('th-TH'),
                 'ผู้แจก (Staff)': d.distributor_id ? userMap[d.distributor_id] : (d.from_user_id ? userMap[d.from_user_id] : 'ผู้ใช้งานระบบ'),
-                'ผู้รับ': d.recipient_info || d.note || '-',
+                'ผู้รับ': cleanRecipient,
                 'จำนวนที่แจก (Set)': d.quantity
             });
         });
 
         (transactions || []).filter(t => t.type === 'DISTRIBUTE').forEach(t => {
+            const rawNote = t.note || '-';
+            const cleanNote = rawNote.replace(/^แจกให้:\s*/, ''); // ✂️ ตัดคำว่า "แจกให้: " ออก
             distributeList.push({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'ผู้แจก (Staff)': t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ',
-                'ผู้รับ': t.note || '-',
+                'ผู้รับ': cleanNote,
                 'จำนวนที่แจก (Set)': t.quantity
             });
         });
