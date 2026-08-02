@@ -4,8 +4,8 @@ import { supabase } from './supabaseClient.js';
 let CURRENT_USER = null;
 
 // 🚨 เกณฑ์เตือนสต๊อกต่ำ (Low Stock Thresholds)
-const MIN_CENTRAL_STOCK = 20;
-const MIN_SUB_STOCK = 5;
+const MIN_CENTRAL_STOCK = 30;
+const MIN_SUB_STOCK = 10;
 
 // -------------------------------------------------------------
 // 🔒 1. ตรวจสอบ Session การเข้าสู่ระบบ และดึง Profile จริง
@@ -66,20 +66,24 @@ function setupUIByRole(role) {
     const centralPanel = document.getElementById('centralPanel');
     const subPanel = document.getElementById('subPanel');
     const exportSection = document.getElementById('btnExportExcel')?.closest('div.bg-white');
+    const btnManageStaff = document.getElementById('btnManageStaff');
 
     if (role === 'SUPER_ADMIN') {
         centralPanel?.classList.remove('hidden');
         subPanel?.classList.remove('hidden');
-        exportSection?.classList.remove('hidden'); // ✅ Super Admin เห็นปุ่ม Export
+        exportSection?.classList.remove('hidden');  // ✅ Super Admin เห็นปุ่ม Export
+        btnManageStaff?.classList.remove('hidden'); // ✅ Super Admin เห็นปุ่ม จัดการ Staff
     } else if (role === 'CENTRAL_ADMIN') {
         centralPanel?.classList.remove('hidden');
         subPanel?.classList.add('hidden');
-        exportSection?.classList.add('hidden');    // ❌ Central Admin ซ่อนปุ่ม Export
+        exportSection?.classList.add('hidden');     // ❌ Central Admin ซ่อนปุ่ม Export
+        btnManageStaff?.classList.add('hidden');    // ❌ Central Admin ซ่อนปุ่ม จัดการ Staff
     } else {
         // SUB_STAFF
         centralPanel?.classList.add('hidden');
         subPanel?.classList.remove('hidden');
-        exportSection?.classList.add('hidden');    // ❌ Sub Staff ซ่อนปุ่ม Export
+        exportSection?.classList.add('hidden');     // ❌ Sub Staff ซ่อนปุ่ม Export
+        btnManageStaff?.classList.add('hidden');    // ❌ Sub Staff ซ่อนปุ่ม จัดการ Staff
     }
 }
 
