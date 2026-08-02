@@ -1,179 +1,189 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>D-Stock ER - ระบบบริหารจัดการสต๊อกเวชภัณฑ์ห้องฉุกเฉิน</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script> tailwind.config = { corePlugins: { preflight: true } } </script>
-    <!-- SheetJS CDN สำหรับ Export Excel -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- Google Font Prompt -->
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style> body { font-family: 'Prompt', sans-serif; } </style>
-</head>
-<body class="bg-slate-100 min-h-screen p-4 md:p-8">
+import { supabase } from './supabaseClient.js';
 
-    <div class="max-w-5xl mx-auto space-y-6">
-        
-        <!-- ------------------------------------------------------------- -->
-        <!-- 1. Header & User Profile Bar -->
-        <!-- ------------------------------------------------------------- -->
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div class="flex items-center gap-3">
-                <img src="https://wddkaxdspxgaafuajpms.supabase.co/storage/v1/object/public/LOGO/ER_EMS%20LOGO.png" 
-                     alt="ER EMS Logo" 
-                     class="h-12 object-contain mix-blend-multiply">
-                <div>
-                    <h1 class="text-xl font-bold text-slate-800">🏥 D-Stock ER</h1>
-                    <p class="text-xs text-slate-500">ระบบบริหารจัดการสต๊อกเวชภัณฑ์ห้องฉุกเฉิน</p>
-                </div>
-            </div>
+// -------------------------------------------------------------
+// 🔒 1. ตรวจสอบสิทธิ์การเข้าถึง (เฉพาะ Super Admin เท่านั้น)
+// -------------------------------------------------------------
+async function checkSuperAdminAuth() {
+    try {
+        const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
 
-            <!-- ส่วนแสดงผู้ใช้งานปัจจุบัน + ปุ่ม Logout -->
-            <div class="flex items-center gap-3 w-full md:w-auto justify-end border-t md:border-t-0 pt-3 md:pt-0">
-                <!-- ปุ่มไปยังหน้าจัดการ Staff (แสดงเฉพาะ Super Admin เท่านั้น) -->
-                <a href="./staff.html" id="btnManageStaff" class="hidden bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold px-3 py-2 rounded-xl border border-purple-200 transition active:scale-95 flex items-center gap-1">
-                    👥 จัดการ Staff
-                </a>
+        if (sessionErr || !session) {
+            alert('กรุณาเข้าสู่ระบบก่อนใช้งาน');
+            window.location.href = './index.html';
+            return;
+        }
 
-                <div class="text-right">
-                    <p id="userFullName" class="text-sm font-bold text-slate-800">กำลังโหลด...</p>
-                    <span id="userRoleBadge" class="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full border border-slate-200">
-                        -
-                    </span>
-                </div>
+        const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .maybeSingle();
 
-                <button id="btnLogout" type="button" class="bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium px-3.5 py-2 rounded-xl border border-red-200 transition active:scale-95">
-                    🚪 ออกจากระบบ
-                </button>
-            </div>
-        </div>
+        if (profileErr || profile?.role !== 'SUPER_ADMIN') {
+            alert('🚫 คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการเจ้าหน้าที่ (สิทธิ์เฉพาะ Super Admin เท่านั้น)');
+            window.location.href = './dashboard.html';
+            return;
+        }
 
-        <!-- ------------------------------------------------------------- -->
-        <!-- 2. แผงควบคุม คลังใหญ่ (Central Stock Panel) -->
-        <!-- ------------------------------------------------------------- -->
-        <div id="centralPanel" class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-4">
-            <div class="flex justify-between items-center border-b pb-3">
-                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <span>📦 คลังใหญ่ (Central Stock)</span>
-                </h2>
-                <span class="text-xs font-semibold bg-red-100 text-red-800 px-2.5 py-1 rounded-full">Center Staff / Admin</span>
-            </div>
+        // ผ่านการตรวจสอบสิทธิ์ ดึงรายการ Staff มาแสดง
+        await loadStaffList();
 
-            <!-- สรุปยอดคลังใหญ่ -->
-            <div class="bg-red-50 border border-red-100 p-4 rounded-xl flex justify-between items-center">
-                <div>
-                    <p class="text-xs text-red-600 font-medium">ยอดสต๊อกคงเหลือคลังใหญ่</p>
-                    <p class="text-3xl font-bold text-red-700 mt-1"><span id="centralQtyDisplay">0</span> <span class="text-base font-normal">Set</span></p>
-                </div>
-            </div>
+    } catch (err) {
+        console.error('Auth Check Error:', err);
+        alert('เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์: ' + err.message);
+        window.location.href = './dashboard.html';
+    }
+}
 
-            <!-- ฟอร์มเติมของ & จ่ายของ -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- ➕ เติมของเข้าคลังใหญ่ -->
-                <div class="p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
-                    <h3 class="text-xs font-bold text-slate-700">➕ เติมของเข้าคลังใหญ่ (Restock)</h3>
-                    <div class="flex gap-2">
-                        <input type="number" id="restockQty" placeholder="จำนวนที่เติม" class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
-                        <button id="btnRestock" type="button" class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg text-sm whitespace-nowrap transition active:scale-95">เติมของ</button>
-                    </div>
-                </div>
+// -------------------------------------------------------------
+// 📋 2. ดึงรายชื่อ Staff ทั้งหมดจากตาราง profiles (พร้อม Dropdown แก้ไข Role)
+// -------------------------------------------------------------
+async function loadStaffList() {
+    const tableBody = document.getElementById('staffTableBody');
+    const countBadge = document.getElementById('staffCount');
 
-                <!-- ➡️ จ่ายของออกให้คลังย่อย -->
-                <div class="p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
-                    <h3 class="text-xs font-bold text-slate-700">➡️ จ่ายของออกให้คลังย่อย (Issue)</h3>
-                    <div class="flex gap-2">
-                        <input type="number" id="issueQty" placeholder="จำนวนที่จ่าย" class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
-                        <button id="btnIssue" type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm whitespace-nowrap transition active:scale-95">จ่ายออก</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+    if (!tableBody) return;
 
-        <!-- ------------------------------------------------------------- -->
-        <!-- 3. แผงควบคุม คลังย่อย (Sub Stock Panel) -->
-        <!-- ------------------------------------------------------------- -->
-        <div id="subPanel" class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-4">
-            <div class="flex justify-between items-center border-b pb-3">
-                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <span>🩺 คลังย่อย ER (Sub Stock)</span>
-                </h2>
-                <span class="text-xs font-semibold bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full">Sub Staff / Admin</span>
-            </div>
+    try {
+        const { data: staffList, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('created_at', { ascending: false });
 
-            <!-- สรุปยอดคลังย่อย -->
-            <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex justify-between items-center">
-                <div>
-                    <p class="text-xs text-blue-600 font-medium">ยอดสต๊อกคงเหลือคลังย่อย ER</p>
-                    <p class="text-3xl font-bold text-blue-700 mt-1"><span id="subQtyDisplay">0</span> <span class="text-base font-normal">Set</span></p>
-                </div>
-            </div>
+        if (error) throw error;
 
-            <!-- ฟอร์มบันทึกการแจกของ & ส่งคืน -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <!-- 📝 บันทึกแจกของ (ใช้ 2 ช่อง) -->
-                <div class="md:col-span-2 p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
-                    <h3 class="text-xs font-bold text-slate-700">📝 ลงบันทึกการแจกใช้งาน (Distribute)</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <input type="text" id="recipientInfo" placeholder="ผู้รับ / เลข HN / จุดงาน" class="sm:col-span-2 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <input type="number" id="distributeQty" placeholder="จำนวน (Set)" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    <button id="btnDistribute" type="button" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition active:scale-95">
-                        บันทึกการแจกของ
-                    </button>
-                </div>
+        if (countBadge) countBadge.innerText = `${staffList ? staffList.length : 0} คน`;
 
-                <!-- ↩️ ส่งคืนคลังใหญ่ -->
-                <div class="p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
-                    <h3 class="text-xs font-bold text-slate-700">↩️ ส่งคืนคลังใหญ่ (Return)</h3>
-                    <div class="space-y-2">
-                        <input type="number" id="returnQty" placeholder="จำนวนที่ส่งคืน" class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
-                        <button id="btnReturn" type="button" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition active:scale-95">
-                            ส่งคืนคลังใหญ่
+        if (!staffList || staffList.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-slate-400">ยังไม่มีรายชื่อเจ้าหน้าที่ในระบบ</td></tr>`;
+            return;
+        }
+
+        tableBody.innerHTML = staffList.map(staff => {
+            return `
+                <tr class="hover:bg-slate-50 border-b">
+                    <td class="p-3 font-mono text-xs text-slate-500">${staff.staff_code || '-'}</td>
+                    <td class="p-3 font-medium text-slate-800">${staff.full_name || 'ไม่ระบุชื่อ'}</td>
+                    <td class="p-3">
+                        <!-- 🔄 Dropdown เปลี่ยน Role 4 ระดับ -->
+                        <select onchange="updateStaffRole('${staff.id}', this.value, '${staff.full_name}')" 
+                                class="text-xs font-semibold px-2.5 py-1 rounded-lg border outline-none cursor-pointer transition ${
+                                    staff.role === 'SUPER_ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                    staff.role === 'ADMIN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                    staff.role === 'CENTER_STAFF' ? 'bg-red-50 text-red-700 border-red-200' :
+                                    'bg-blue-50 text-blue-700 border-blue-200'
+                                }">
+                            <option value="SUB_STAFF" ${staff.role === 'SUB_STAFF' ? 'selected' : ''}>🩺 Sub Staff</option>
+                            <option value="CENTER_STAFF" ${staff.role === 'CENTER_STAFF' ? 'selected' : ''}>📦 Center Staff</option>
+                            <option value="ADMIN" ${staff.role === 'ADMIN' ? 'selected' : ''}>🛡️ Admin</option>
+                            <option value="SUPER_ADMIN" ${staff.role === 'SUPER_ADMIN' ? 'selected' : ''}>👑 Super Admin</option>
+                        </select>
+                    </td>
+                    <td class="p-3 text-center">
+                        <button onclick="deleteStaff('${staff.id}', '${staff.full_name}')" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg border border-red-200 transition active:scale-95">
+                            🗑️ ลบ
                         </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
 
-        <!-- ------------------------------------------------------------- -->
-        <!-- 4. บันทึกตรวจนับสต๊อกประจำวัน (Daily Stock Audit) -->
-        <!-- ------------------------------------------------------------- -->
-        <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-3">
-            <h3 class="text-base font-bold text-slate-800 border-b pb-2 flex items-center gap-2">
-                <span>📋 บันทึกตรวจนับสต๊อกประจำวัน (Daily Audit)</span>
-            </h3>
-            <p class="text-xs text-slate-500">ใช้นับยอดสินค้าจริงบนชั้นวาง เพื่อปรับยอดให้ตรงกับระบบทุกวัน</p>
-            
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <input type="number" id="actualCountQty" placeholder="จำนวนที่นับได้จริง (Set)" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
-                <input type="text" id="countNote" placeholder="หมายเหตุ (เช่น ปกติ / ของชำรุด 1 ชุด)" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
-                <button id="btnSaveDailyCount" type="button" class="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg text-sm transition active:scale-95">
-                    ยืนยันยอดตรวจนับ
-                </button>
-            </div>
-        </div>
+    } catch (err) {
+        console.error('Load Staff Error:', err);
+        tableBody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-red-500">เกิดข้อผิดพลาดในการดึงข้อมูล: ${err.message}</td></tr>`;
+    }
+}
 
-        <!-- ------------------------------------------------------------- -->
-        <!-- 5. แผง Export Executive Report (เปิดให้ Super Admin & Admin) -->
-        <!-- ------------------------------------------------------------- -->
-        <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div>
-                <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
-                    <span>📊 รายงานสรุปภาพรวมระบบ (Executive Report)</span>
-                </h3>
-                <p class="text-xs text-slate-500 mt-0.5">ดาวน์โหลดไฟล์ Excel สรุปข้อมูล 3 Tabs (เติมคลังใหญ่, จ่าย-คืน คลังย่อย, ประวัติการแจก)</p>
-            </div>
-            <button id="btnExportExcel" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-5 rounded-xl text-sm transition active:scale-95 whitespace-nowrap shadow-md flex items-center gap-2">
-                <span>📥 Export Excel (3 Tabs)</span>
-            </button>
-        </div>
+// -------------------------------------------------------------
+// 🔄 3. ฟังก์ชันเปลี่ยนสิทธิ์ (Role) ของ Staff
+// -------------------------------------------------------------
+window.updateStaffRole = async (id, newRole, name) => {
+    try {
+        const { error } = await supabase
+            .from('profiles')
+            .update({ role: newRole })
+            .eq('id', id);
 
-    </div>
+        if (error) throw error;
 
-    <!-- สคริปต์หลักควบคุมการทำงานระบบ Production -->
-    <script type="module" src="./js/app.js"></script>
-</body>
-</html>
+        alert(`เปลี่ยนสิทธิ์การใช้งานของ "${name}" เรียบร้อยแล้ว`);
+        await loadStaffList();
+
+    } catch (err) {
+        console.error('Update Role Error:', err);
+        alert('เกิดข้อผิดพลาดในการเปลี่ยนสิทธิ์: ' + err.message);
+        await loadStaffList();
+    }
+};
+
+// -------------------------------------------------------------
+// ➕ 4. ฟอร์มสร้าง Staff ใหม่ผ่าน RPC Call (ไม่สลับ Session / ไม่ติด Email Rate Limit)
+// -------------------------------------------------------------
+document.getElementById('createStaffForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const btn = document.getElementById('btnSaveStaff');
+    const staffCode = document.getElementById('staffCode').value.trim();
+    const fullName = document.getElementById('fullName').value.trim();
+    const email = document.getElementById('staffEmail').value.trim();
+    const password = document.getElementById('staffPassword').value;
+    const role = document.getElementById('staffRole').value;
+
+    btn.disabled = true;
+    btn.innerText = 'กำลังบันทึกข้อมูล...';
+
+    try {
+        // เรียกใช้ Database Function บน Supabase โดยตรง
+        const { data, error } = await supabase.rpc('create_new_staff', {
+            p_email: email,
+            p_password: password,
+            p_full_name: fullName,
+            p_staff_code: staffCode,
+            p_role: role
+        });
+
+        if (error) throw error;
+        if (data && data.success === false) throw new Error(data.message);
+
+        alert(`สร้างบัญชีเจ้าหน้าที่ ${fullName} สำเร็จ!\nรหัสผ่านเริ่มต้น: ${password}`);
+        
+        document.getElementById('createStaffForm').reset();
+        document.getElementById('staffPassword').value = 'Abc@1234';
+        
+        await loadStaffList();
+
+    } catch (err) {
+        console.error('Create Staff Error:', err);
+        const errMsg = err.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        alert('เกิดข้อผิดพลาดในการสร้างบัญชี: ' + errMsg);
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'บันทึกข้อมูล Staff';
+    }
+});
+
+// -------------------------------------------------------------
+// 🗑️ 5. ฟังก์ชันลบ Staff ออกจากระบบ
+// -------------------------------------------------------------
+window.deleteStaff = async (id, name) => {
+    if (!confirm(`คุณต้องการลบเจ้าหน้าที่ "${name}" ออกจากระบบใช่หรือไม่?`)) return;
+
+    try {
+        const { error } = await supabase
+            .from('profiles')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+
+        alert('ลบเจ้าหน้าที่เรียบร้อยแล้ว');
+        await loadStaffList();
+
+    } catch (err) {
+        console.error('Delete Staff Error:', err);
+        alert('เกิดข้อผิดพลาดในการลบ: ' + err.message);
+    }
+};
+
+// ตรวจสอบสิทธิ์ Super Admin ทันทีเมื่อโหลดสคริปต์
+checkSuperAdminAuth();
