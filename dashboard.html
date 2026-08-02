@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D-Stock ER - Dashboard (Test Mode)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style> body { font-family: 'Prompt', sans-serif; } </style>
+</head>
+<body class="bg-slate-100 min-h-screen p-4 md:p-6">
+
+    <div class="max-w-4xl mx-auto bg-white rounded-2xl p-4 shadow-sm mb-6 border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div>
+            <h1 class="text-xl font-bold text-slate-800">🏥 D-Stock ER (Test Mode)</h1>
+            <p class="text-xs text-slate-500">จำลองการทำงานโดยข้ามหน้า Login</p>
+        </div>
+        <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+            <span class="text-xs font-medium text-slate-600">สลับ Role:</span>
+            <select id="roleSelector" class="bg-white text-sm font-medium border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-500">
+                <option value="CENTRAL_ADMIN">📦 Admin คลังใหญ่</option>
+                <option value="SUB_STAFF">🩺 Staff คลังย่อย (คนกระจาย Set)</option>
+                <option value="SUPER_ADMIN">👑 Super Admin</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto space-y-6">
+
+        <div id="centralPanel" class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2">📦 คลังใหญ่ (Central Stock)</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="bg-red-50 border border-red-100 p-4 rounded-xl">
+                    <span class="text-xs font-medium text-red-600 uppercase">ยอดคงเหลือคลังใหญ่</span>
+                    <div class="text-3xl font-bold text-red-700 mt-1" id="centralQtyDisplay">0 <span class="text-base font-normal">Set</span></div>
+                </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <h3 class="text-sm font-semibold text-slate-700">จ่ายของให้ Staff คลังย่อย (Issue Stock)</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input type="number" id="issueQty" placeholder="จำนวนที่ต้องการจ่าย" class="px-3 py-2 border rounded-lg text-sm">
+                    <button id="btnIssue" class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition">
+                        จ่ายของออก
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="subPanel" class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2">🩺 สต๊อกย่อยประจำตัว (Sub Stock)</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl">
+                    <span class="text-xs font-medium text-blue-600 uppercase">ยอดสต๊อกในมือคุณ</span>
+                    <div class="text-3xl font-bold text-blue-700 mt-1" id="subQtyDisplay">0 <span class="text-base font-normal">Set</span></div>
+                </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 mb-4">
+                <h3 class="text-sm font-semibold text-slate-700">➕ ลงบันทึกแจกของ (Distribute)</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <input type="text" id="recipientInfo" placeholder="ชื่อผู้รับ / เลข HN / จุดงาน" class="px-3 py-2 border rounded-lg text-sm sm:col-span-2">
+                    <input type="number" id="distributeQty" placeholder="จำนวนที่แจก" class="px-3 py-2 border rounded-lg text-sm">
+                </div>
+                <button id="btnDistribute" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition">
+                    บันทึกการแจกของ
+                </button>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <h3 class="text-sm font-semibold text-slate-700">↩️ คืนของเข้าคลังใหญ่ (Return)</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input type="number" id="returnQty" placeholder="จำนวนที่ส่งคืน" class="px-3 py-2 border rounded-lg text-sm">
+                    <button id="btnReturn" class="bg-slate-700 hover:bg-slate-800 text-white font-medium py-2 px-4 rounded-lg text-sm transition">
+                        ส่งคืนคลังใหญ่
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div>
+                <h3 class="font-bold text-slate-800">📊 ออกรายงานการใช้งาน</h3>
+                <p class="text-xs text-slate-500">ดึงข้อมูลแจกของทั้งหมดเป็นไฟล์ Excel (.xlsx)</p>
+            </div>
+            <button id="btnExportExcel" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-5 rounded-xl text-sm transition flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                Export Excel (.xlsx)
+            </button>
+        </div>
+
+    </div>
+
+    <script type="module" src="./js/appTest.js"></script>
+</body>
+</html>
