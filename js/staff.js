@@ -1,8 +1,26 @@
 import { supabase } from './supabaseClient.js';
 
-// -------------------------------------------------------------
+const toastSuccess = (title, text) => {
+    Swal.fire({
+        icon: 'success',
+        title: title,
+        text: text,
+        confirmButtonColor: '#10B981',
+        customClass: { popup: 'rounded-2xl' }
+    });
+};
+
+const toastError = (title, text) => {
+    Swal.fire({
+        icon: 'error',
+        title: title,
+        text: text,
+        confirmButtonColor: '#EF4444',
+        customClass: { popup: 'rounded-2xl' }
+    });
+};
+
 // 1. ตรวจสอบสิทธิ์ Super Admin
-// -------------------------------------------------------------
 async function checkAuth() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return window.location.href = './index.html';
@@ -14,16 +32,19 @@ async function checkAuth() {
         .maybeSingle();
 
     if (profile?.role !== 'SUPER_ADMIN') {
-        alert('🚫 สิทธิ์เฉพาะ Super Admin เท่านั้น');
+        await Swal.fire({
+            icon: 'error',
+            title: '🚫 ปฏิเสธสิทธิ์การเข้าถึง',
+            text: 'หน้านี้อนุญาตเฉพาะ Super Admin เท่านั้น',
+            confirmButtonColor: '#EF4444'
+        });
         return window.location.href = './dashboard.html';
     }
 
     await loadStaffList();
 }
 
-// -------------------------------------------------------------
-// 2. โหลดรายชื่อ Staff ทั้งหมด (พร้อมปุ่มบังคับรีเซ็ตรหัสผ่าน)
-// -------------------------------------------------------------
+// 2. โหลดรายชื่อ Staff ทั้งหมด
 async function loadStaffList() {
     const tableBody = document.getElementById('staffTableBody');
     const countBadge = document.getElementById('staffCount');
@@ -65,13 +86,11 @@ async function loadStaffList() {
                 </select>
             </td>
             <td class="p-3 text-center space-x-1">
-                <!-- 🔑 ปุ่มบังคับรีเซ็ตรหัสผ่าน -->
                 <button onclick="forceResetPassword('${staff.id}', '${staff.full_name}')" 
                         title="บังคับเปลี่ยนรหัสผ่านในครั้งถัดไป" 
                         class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 px-2 py-1 rounded-lg border border-amber-200 transition active:scale-95">
                     🔑 รีเซ็ต
                 </button>
-                <!-- 🗑️ ปุ่มลบ -->
                 <button onclick="deleteStaff('${staff.id}', '${staff.full_name}')" 
                         class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg border border-red-200 transition active:scale-95">
                     🗑️ ลบ
@@ -81,39 +100,45 @@ async function loadStaffList() {
     `).join('');
 }
 
-// -------------------------------------------------------------
-// 3. เปลี่ยน Role (ส่งเข้า RPC เพื่อ Cast Type)
-// -------------------------------------------------------------
+// 3. เปลี่ยน Role
 window.updateStaffRole = async (id, newRole, name) => {
     const { error } = await supabase.rpc('update_staff_role', {
         p_id: id,
         p_role_str: newRole
     });
 
-    if (error) alert('เปลี่ยนสิทธิ์ไม่สำเร็จ: ' + error.message);
-    else { alert(`อัปเดตสิทธิ์ของ "${name}" เรียบร้อยแล้ว`); await loadStaffList(); }
+    if (error) toastError('เปลี่ยนสิทธิ์ไม่สำเร็จ', error.message);
+    else { toastSuccess('อัปเดตสิทธิ์สำเร็จ', `ปรับสิทธิ์การใช้งานของ "${name}" เรียบร้อยแล้ว`); await loadStaffList(); }
 };
 
-// -------------------------------------------------------------
-// 🔑 3.5 บังคับรีเซ็ตรหัสผ่านรายบุคคล
-// -------------------------------------------------------------
+// 3.5 บังคับรีเซ็ตรหัสผ่านรายบุคคล
 window.forceResetPassword = async (id, name) => {
-    if (!confirm(`ต้องการบังคับให้ "${name}" เปลี่ยนรหัสผ่านใหม่ในการเข้าสู่ระบบครั้งถัดไปใช่หรือไม่?`)) return;
+    const confirmRes = await Swal.fire({
+        title: 'บังคับเปลี่ยนรหัสผ่าน?',
+        text: `ต้องการบังคับให้ "${name}" เปลี่ยนรหัสผ่านใหม่ในการเข้าสู่ระบบครั้งถัดไปใช่หรือไม่?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#F59E0B',
+        cancelButtonColor: '#94A3B8',
+        confirmButtonText: 'ยืนยันบังคับรีเซ็ต',
+        cancelButtonText: 'ยกเลิก',
+        customClass: { popup: 'rounded-2xl' }
+    });
+
+    if (!confirmRes.isConfirmed) return;
 
     try {
         const { error } = await supabase.rpc('force_reset_password', { p_target_id: id });
         if (error) throw error;
 
-        alert(`ตั้งค่าบังคับเปลี่ยนรหัสผ่านสำหรับ "${name}" เรียบร้อยแล้ว`);
+        toastSuccess('ตั้งค่าสำเร็จ!', `บังคับเปลี่ยนรหัสผ่านสำหรับ "${name}" เรียบร้อยแล้ว`);
     } catch (err) {
         console.error('Force Reset Error:', err);
-        alert('เกิดข้อผิดพลาด: ' + err.message);
+        toastError('เกิดข้อผิดพลาด', err.message);
     }
 };
 
-// -------------------------------------------------------------
 // 4. บันทึกสร้าง Staff
-// -------------------------------------------------------------
 document.getElementById('createStaffForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('btnSaveStaff');
@@ -128,7 +153,6 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
     btn.innerText = 'กำลังบันทึกข้อมูล...';
 
     try {
-        // 1. สร้าง Auth User
         const { data: authData, error: authError } = await supabase.auth.signUp({
             email: email,
             password: password,
@@ -139,7 +163,6 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
 
         if (authError) throw authError;
 
-        // 2. บันทึกลงตาราง profiles ผ่าน RPC เพื่อ Cast เป็น Enum user_role
         if (authData.user) {
             const { error: profileError } = await supabase.rpc('create_staff_profile', {
                 p_id: authData.user.id,
@@ -151,28 +174,39 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
             if (profileError) throw profileError;
         }
 
-        alert(`สร้างบัญชีเจ้าหน้าที่ ${fullName} สำเร็จ!`);
+        toastSuccess('สร้างบัญชีสำเร็จ! 🎉', `เพิ่มบัญชีเจ้าหน้าที่ ${fullName} เรียบร้อยแล้ว`);
         document.getElementById('createStaffForm').reset();
         document.getElementById('staffPassword').value = 'Abc@1234';
         await loadStaffList();
 
     } catch (err) {
         console.error('Create Staff Error:', err);
-        alert('เกิดข้อผิดพลาดในการสร้างบัญชี: ' + (err.message || String(err)));
+        toastError('เกิดข้อผิดพลาดในการสร้างบัญชี', err.message || String(err));
     } finally {
         btn.disabled = false;
         btn.innerText = 'บันทึกข้อมูล Staff';
     }
 });
 
-// -------------------------------------------------------------
 // 5. ลบ Staff
-// -------------------------------------------------------------
 window.deleteStaff = async (id, name) => {
-    if (!confirm(`ลบเจ้าหน้าที่ "${name}" ใช่หรือไม่?`)) return;
+    const confirmRes = await Swal.fire({
+        title: 'ยืนยันลบเจ้าหน้าที่?',
+        text: `ต้องการลบรายชื่อ "${name}" ออกจากระบบใช่หรือไม่?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#EF4444',
+        cancelButtonColor: '#94A3B8',
+        confirmButtonText: 'ลบเจ้าหน้าที่',
+        cancelButtonText: 'ยกเลิก',
+        customClass: { popup: 'rounded-2xl' }
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
     const { error } = await supabase.from('profiles').delete().eq('id', id);
-    if (error) alert('ลบไม่สำเร็จ: ' + error.message);
-    else await loadStaffList();
+    if (error) toastError('ลบไม่สำเร็จ', error.message);
+    else { toastSuccess('ลบเรียบร้อย', `ลบเจ้าหน้าที่ "${name}" สำเร็จ`); await loadStaffList(); }
 };
 
 checkAuth();
