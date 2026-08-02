@@ -5,7 +5,7 @@ let CURRENT_USER = null;
 const MIN_CENTRAL_STOCK = 30;
 const MIN_SUB_STOCK = 10;
 
-// 🟢 ฟังก์ชัน SweetAlert2 สวยๆ สำหรับใช้งานซ้ำ
+// 🟢 ฟังก์ชัน SweetAlert2 สำหรับใช้งานซ้ำ
 const toastSuccess = (title, text) => {
     Swal.fire({
         icon: 'success',
@@ -308,7 +308,7 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
 });
 
 // -------------------------------------------------------------
-// 📊 7. Export Executive Report
+// 📊 7. Export Executive Report (ปรับปรุงการดึงข้อมูลเพื่อป้องกัน Null ปัดข้อมูลหลุด)
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -316,64 +316,77 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
     }
 
     try {
+        // 1. ดึงข้อมูล Transactions ทั้งหมด
         const { data: transactions, error: transError } = await supabase
             .from('stock_transactions')
-            .select(`
-                created_at,
-                type,
-                quantity,
-                note,
-                from_user:from_user_id (full_name, staff_code),
-                to_user:to_user_id (full_name, staff_code)
-            `)
+            .select('*')
             .order('created_at', { ascending: false });
 
         if (transError) throw transError;
 
-        const { data: distributions, error: distError } = await supabase
+        // 2. ดึงข้อมูล Distribution Logs
+        const { data: distributions } = await supabase
             .from('distribution_logs')
-            .select(`
-                created_at,
-                recipient_info,
-                quantity,
-                distributor:distributor_id (full_name, staff_code)
-            `)
+            .select('*')
             .order('created_at', { ascending: false });
 
-        if (distError) throw distError;
+        // 3. ดึงรายชื่อ Profile เพื่อ Map รายชื่อผู้ใช้งาน
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
+        const userMap = {};
+        (profiles || []).forEach(p => {
+            userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
+        });
 
         const workbook = XLSX.utils.book_new();
 
+        // 🟢 TAB 1: รายการเติมเข้าคลังใหญ่ (RESTOCK)
         const restockData = (transactions || [])
             .filter(t => t.type === 'RESTOCK')
             .map(t => ({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'ประเภท': 'เติมเข้าคลังใหญ่',
+                'ผู้ดำเนินการ': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ระบบ / Admin'),
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ / เลขที่อ้างอิง': t.note || '-'
             }));
         const sheetRestock = XLSX.utils.json_to_sheet(restockData.length ? restockData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
         XLSX.utils.book_append_sheet(workbook, sheetRestock, "1. เติมเข้าคลังใหญ่");
 
+        // 🔵 TAB 2: รายการจ่ายให้คลังย่อย (ISSUE & RETURN)
         const transferData = (transactions || [])
             .filter(t => t.type === 'ISSUE' || t.type === 'RETURN')
             .map(t => ({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'การดำเนินการ': t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
-                'ผู้รับ/ผู้ส่งคืน (Staff)': t.to_user?.full_name ? `${t.to_user.full_name} (${t.to_user.staff_code || '-'})` : (t.from_user?.full_name || 'ผู้ใช้งานระบบ'),
+                'ผู้รับ/ผู้ส่งคืน (Staff)': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ'),
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ': t.note || '-'
             }));
         const sheetTransfer = XLSX.utils.json_to_sheet(transferData.length ? transferData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
         XLSX.utils.book_append_sheet(workbook, sheetTransfer, "2. จ่าย-คืน คลังย่อย");
 
-        const distributeData = (distributions || []).map(d => ({
-            'วันที่-เวลา': new Date(d.created_at).toLocaleString('th-TH'),
-            'ผู้แจก (Staff)': d.distributor?.full_name ? `${d.distributor.full_name} (${d.distributor.staff_code || '-'})` : 'ผู้ใช้งานระบบ',
-            'ผู้รับ / HN / จุดงาน': d.recipient_info || '-',
-            'จำนวนที่แจก (Set)': d.quantity
-        }));
-        const sheetDistribute = XLSX.utils.json_to_sheet(distributeData.length ? distributeData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+        // 🟡 TAB 3: รายการแจกของใช้งานจริง (DISTRIBUTE - รวมข้อมูลจากทั้งสองแหล่ง)
+        let distributeList = [];
+        
+        (distributions || []).forEach(d => {
+            distributeList.push({
+                'วันที่-เวลา': new Date(d.created_at).toLocaleString('th-TH'),
+                'ผู้แจก (Staff)': d.distributor_id ? userMap[d.distributor_id] : (d.from_user_id ? userMap[d.from_user_id] : 'ผู้ใช้งานระบบ'),
+                'ผู้รับ / HN / จุดงาน': d.recipient_info || d.note || '-',
+                'จำนวนที่แจก (Set)': d.quantity
+            });
+        });
+
+        (transactions || []).filter(t => t.type === 'DISTRIBUTE').forEach(t => {
+            distributeList.push({
+                'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
+                'ผู้แจก (Staff)': t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ',
+                'ผู้รับ / HN / จุดงาน': t.note || '-',
+                'จำนวนที่แจก (Set)': t.quantity
+            });
+        });
+
+        const sheetDistribute = XLSX.utils.json_to_sheet(distributeList.length ? distributeList : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
         XLSX.utils.book_append_sheet(workbook, sheetDistribute, "3. ประวัติการแจกใช้งาน");
 
         const dateStr = new Date().toISOString().slice(0, 10);
