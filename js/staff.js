@@ -20,7 +20,7 @@ const toastError = (title, text) => {
     });
 };
 
-// 1. ตรวจสอบสิทธิ์ Super Admin
+// 1. ตรวจสอบสิทธิ์ Super Admin เข้าใช้งานหน้าจัดการ Staff
 async function checkAuth() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return window.location.href = './index.html';
@@ -44,7 +44,7 @@ async function checkAuth() {
     await loadStaffList();
 }
 
-// 2. โหลดรายชื่อ Staff ทั้งหมด
+// 2. โหลดรายชื่อ Staff ทั้งหมด (เพิ่มการ Protect บัญชี Super Admin)
 async function loadStaffList() {
     const tableBody = document.getElementById('staffTableBody');
     const countBadge = document.getElementById('staffCount');
@@ -67,41 +67,59 @@ async function loadStaffList() {
         return;
     }
 
-    tableBody.innerHTML = staffList.map(staff => `
-        <tr class="hover:bg-slate-50 border-b">
-            <td class="p-3 font-mono text-xs text-slate-500">${staff.staff_code || '-'}</td>
-            <td class="p-3 font-medium text-slate-800">${staff.full_name || 'ไม่ระบุชื่อ'}</td>
-            <td class="p-3">
-                <select onchange="updateStaffRole('${staff.id}', this.value, '${staff.full_name}')" 
-                        class="text-xs font-semibold px-2 py-1 rounded-lg border outline-none ${
-                            staff.role === 'SUPER_ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                            staff.role === 'ADMIN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                            staff.role === 'CENTER_STAFF' ? 'bg-red-50 text-red-700 border-red-200' :
-                            'bg-blue-50 text-blue-700 border-blue-200'
-                        }">
-                    <option value="SUB_STAFF" ${staff.role === 'SUB_STAFF' ? 'selected' : ''}>🩺 Sub Staff</option>
-                    <option value="CENTER_STAFF" ${staff.role === 'CENTER_STAFF' ? 'selected' : ''}>📦 Center Staff</option>
-                    <option value="ADMIN" ${staff.role === 'ADMIN' ? 'selected' : ''}>🛡️ Admin</option>
-                    <option value="SUPER_ADMIN" ${staff.role === 'SUPER_ADMIN' ? 'selected' : ''}>👑 Super Admin</option>
-                </select>
-            </td>
-            <td class="p-3 text-center space-x-1">
-                <button onclick="forceResetPassword('${staff.id}', '${staff.full_name}')" 
-                        title="รีเซ็ตรหัสผ่านกลับเป็นค่าเริ่มต้น Abc@1234" 
-                        class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 px-2 py-1 rounded-lg border border-amber-200 transition active:scale-95">
-                    🔑 รีเซ็ต
-                </button>
-                <button onclick="deleteStaff('${staff.id}', '${staff.full_name}')" 
-                        class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg border border-red-200 transition active:scale-95">
-                    🗑️ ลบ
-                </button>
-            </td>
-        </tr>
-    `).join('');
+    tableBody.innerHTML = staffList.map(staff => {
+        const isSuperAdmin = staff.role === 'SUPER_ADMIN';
+
+        return `
+            <tr class="hover:bg-slate-50 border-b">
+                <td class="p-3 font-mono text-xs text-slate-500">${staff.staff_code || '-'}</td>
+                <td class="p-3 font-medium text-slate-800 flex items-center gap-2">
+                    ${staff.full_name || 'ไม่ระบุชื่อ'}
+                    ${isSuperAdmin ? '<span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-200">🛡️ Protected</span>' : ''}
+                </td>
+                <td class="p-3">
+                    <select onchange="updateStaffRole('${staff.id}', this.value, '${staff.full_name}', '${staff.role}')" 
+                            ${isSuperAdmin ? 'disabled title="บัญชี Super Admin ไม่สามารถเปลี่ยนสิทธิ์ได้"' : ''}
+                            class="text-xs font-semibold px-2 py-1 rounded-lg border outline-none ${
+                                isSuperAdmin ? 'bg-purple-100 text-purple-800 border-purple-300 cursor-not-allowed opacity-80' :
+                                staff.role === 'ADMIN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                staff.role === 'CENTER_STAFF' ? 'bg-red-50 text-red-700 border-red-200' :
+                                'bg-blue-50 text-blue-700 border-blue-200'
+                            }">
+                        <option value="SUB_STAFF" ${staff.role === 'SUB_STAFF' ? 'selected' : ''}>🩺 Sub Staff</option>
+                        <option value="CENTER_STAFF" ${staff.role === 'CENTER_STAFF' ? 'selected' : ''}>📦 Center Staff</option>
+                        <option value="ADMIN" ${staff.role === 'ADMIN' ? 'selected' : ''}>🛡️ Admin</option>
+                        <option value="SUPER_ADMIN" ${staff.role === 'SUPER_ADMIN' ? 'selected' : ''}>👑 Super Admin</option>
+                    </select>
+                </td>
+                <td class="p-3 text-center space-x-1">
+                    ${isSuperAdmin ? `
+                        <span class="text-xs text-slate-400 font-medium italic">🔒 ห้ามแก้ไข</span>
+                    ` : `
+                        <button onclick="forceResetPassword('${staff.id}', '${staff.full_name}', '${staff.role}')" 
+                                title="รีเซ็ตรหัสผ่านกลับเป็นค่าเริ่มต้น Abc@1234" 
+                                class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 px-2 py-1 rounded-lg border border-amber-200 transition active:scale-95">
+                            🔑 รีเซ็ต
+                        </button>
+                        <button onclick="deleteStaff('${staff.id}', '${staff.full_name}', '${staff.role}')" 
+                                class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg border border-red-200 transition active:scale-95">
+                            🗑️ ลบ
+                        </button>
+                    `}
+                </td>
+            </tr>
+        `;
+    }).join('');
 }
 
-// 3. เปลี่ยน Role
-window.updateStaffRole = async (id, newRole, name) => {
+// 3. ป้องกันการอัปเดตสิทธิ์ของ Super Admin
+window.updateStaffRole = async (id, newRole, name, currentRole) => {
+    if (currentRole === 'SUPER_ADMIN') {
+        toastError('ปฏิเสธการดำเนินการ', 'ไม่สามารถเปลี่ยนแปลงสิทธิ์ของ Super Admin ได้');
+        await loadStaffList();
+        return;
+    }
+
     const { error } = await supabase.rpc('update_staff_role', {
         p_id: id,
         p_role_str: newRole
@@ -111,8 +129,12 @@ window.updateStaffRole = async (id, newRole, name) => {
     else { toastSuccess('อัปเดตสิทธิ์สำเร็จ', `ปรับสิทธิ์การใช้งานของ "${name}" เรียบร้อยแล้ว`); await loadStaffList(); }
 };
 
-// 3.5 รีเซ็ตรหัสผ่านเป็น Abc@1234 รายบุคคล
-window.forceResetPassword = async (id, name) => {
+// 3.5 ป้องกันการรีเซ็ตรหัสผ่านของ Super Admin
+window.forceResetPassword = async (id, name, role) => {
+    if (role === 'SUPER_ADMIN') {
+        return toastError('ปฏิเสธการดำเนินการ', 'ไม่สามารถรีเซ็ตรหัสผ่านของบัญชี Super Admin ได้');
+    }
+
     const confirmRes = await Swal.fire({
         title: 'รีเซ็ตรหัสผ่านเป็นค่าเริ่มต้น?',
         text: `ต้องการรีเซ็ตรหัสผ่านของ "${name}" กลับเป็น "Abc@1234" ใช่หรือไม่?`,
@@ -199,8 +221,12 @@ document.getElementById('createStaffForm')?.addEventListener('submit', async (e)
     }
 });
 
-// 5. ลบ Staff
-window.deleteStaff = async (id, name) => {
+// 5. ป้องกันการลบบัญชี Super Admin
+window.deleteStaff = async (id, name, role) => {
+    if (role === 'SUPER_ADMIN') {
+        return toastError('ปฏิเสธการดำเนินการ', 'บัญชี Super Admin ได้รับการคุ้มครอง ห้ามลบเด็ดขาด');
+    }
+
     const confirmRes = await Swal.fire({
         title: 'ยืนยันลบเจ้าหน้าที่?',
         text: `ต้องการลบรายชื่อ "${name}" ออกจากระบบใช่หรือไม่?`,
