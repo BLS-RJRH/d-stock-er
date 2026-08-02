@@ -15,9 +15,7 @@
 
     <div class="max-w-5xl mx-auto space-y-6">
         
-        <!-- ------------------------------------------------------------- -->
-        <!-- 1. Header & Back Button -->
-        <!-- ------------------------------------------------------------- -->
+        <!-- Header & Back Button -->
         <div class="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
             <div>
                 <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -30,12 +28,10 @@
             </a>
         </div>
 
-        <!-- ------------------------------------------------------------- -->
-        <!-- 2. Content Layout (2 Columns) -->
-        <!-- ------------------------------------------------------------- -->
+        <!-- Content Layout (2 Columns) -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            <!-- ➕ ฟอร์มสร้าง Staff ใหม่ (Left Column) -->
+            <!-- ➕ ฟอร์มสร้าง Staff ใหม่ -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit space-y-4">
                 <h2 class="text-base font-bold text-slate-800 border-b pb-2">➕ เพิ่มเจ้าหน้าที่ใหม่</h2>
                 
@@ -47,12 +43,12 @@
 
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อ - นามสกุล</label>
-                        <input type="text" id="fullName" required placeholder="เช่น พญ. สมหญิง รักดี" class="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none">
+                        <input type="text" id="fullName" required placeholder="เช่น คุณภาสกร เทตแก้ว" class="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none">
                     </div>
 
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1">อีเมล (สำหรับเข้าสู่ระบบ)</label>
-                        <input type="email" id="staffEmail" required placeholder="staff@hospital.com" class="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none">
+                        <input type="email" id="staffEmail" required placeholder="HOD@er.com" class="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none">
                     </div>
 
                     <div>
@@ -64,9 +60,10 @@
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1">สิทธิ์การใช้งาน (Role)</label>
                         <select id="staffRole" class="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none">
-                            <option value="SUB_STAFF">🩺 Staff คลังย่อย (เบิก-แจกของ)</option>
-                            <option value="CENTRAL_ADMIN">📦 Admin คลังใหญ่ (เติม-จ่ายของ)</option>
-                            <option value="SUPER_ADMIN">👑 Super Admin (จัดการทั้งหมด + ดึง Report)</option>
+                            <option value="SUB_STAFF">🩺 Sub Staff (เบิก-คืน-นับ คลังย่อย)</option>
+                            <option value="CENTER_STAFF">📦 Center Staff (เติม-จ่าย-นับ คลังใหญ่)</option>
+                            <option value="ADMIN">🛡️ Admin (ดูภาพรวมทั้งหมด + ดึง Report)</option>
+                            <option value="SUPER_ADMIN">👑 Super Admin (จัดการทุกอย่าง + จัดการ Staff)</option>
                         </select>
                     </div>
 
@@ -76,7 +73,7 @@
                 </form>
             </div>
 
-            <!-- 📋 ตารางรายชื่อ Staff ทั้งหมด (Right Column) -->
+            <!-- 📋 ตารางรายชื่อ Staff ทั้งหมด -->
             <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                 <div class="flex justify-between items-center border-b pb-2">
                     <h2 class="text-base font-bold text-slate-800">📋 รายชื่อเจ้าหน้าที่ในระบบ</h2>
