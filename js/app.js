@@ -267,13 +267,13 @@ document.getElementById('btnReturn')?.addEventListener('click', async () => {
 });
 
 // -------------------------------------------------------------
-// 📋 6. บันทึกตรวจนับสต๊อกประจำวัน (Daily Stock Audit)
+// 📋 6. บันทึกตรวจนับสต๊อกประจำเวร (Daily Stock Audit)
 // -------------------------------------------------------------
 document.getElementById('btnSaveDailyCount')?.addEventListener('click', async () => {
     const actualQtyInput = document.getElementById('actualCountQty');
     const noteInput = document.getElementById('countNote');
     const actualQty = parseInt(actualQtyInput.value);
-    const note = noteInput.value.trim() || 'ตรวจนับประจำวันปกติ';
+    const note = noteInput.value.trim() || 'ตรวจนับประจำเวรปกติ';
 
     if (isNaN(actualQty) || actualQty < 0) {
         return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่นับได้จริงบนชั้นวาง');
@@ -338,14 +338,21 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 
         const workbook = XLSX.utils.book_new();
 
-        // 🟢 1. เติมเข้าคลังใหญ่ (RESTOCK)
+        // 🟢 1. เติมเข้าคลังใหญ่ (RESTOCK - ตัดรายการปรับยอดจากการนับประจำเวรออก)
         if (isRestockChecked) {
             let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
             if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
 
             const { data: restockList } = await query;
-            const restockData = (restockList || []).map(t => ({
+
+            // ✂️ กรองเฉพาะการเติมสต๊อกจริง ตัดรายการที่เป็นการปรับยอดจากการนับออก
+            const filteredRestock = (restockList || []).filter(t => {
+                const note = t.note || '';
+                return !note.includes('ปรับยอดจากการนับ') && !note.includes('Diff:');
+            });
+
+            const restockData = filteredRestock.map(t => ({
                 'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
                 'ประเภท': 'เติมเข้าคลังใหญ่',
                 'ผู้ดำเนินการ': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ระบบ / Admin'),
@@ -395,7 +402,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
             XLSX.utils.book_append_sheet(workbook, sheet, "3. ประวัติการแจกใช้งาน");
         }
 
-        // 📋 4. บันทึกตรวจนับประจำวัน (DAILY AUDIT)
+        // 📋 4. บันทึกตรวจนับประจำเวร (DAILY AUDIT)
         if (isAuditChecked) {
             let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -404,12 +411,12 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
             const { data: auditList } = await query;
             const auditData = (auditList || []).map(a => ({
                 'วันที่-เวลา ตรวจนับ': new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
-                'ผู้ตรวจนับ (Staff)': a.recorder_id ? userMap[a.recorder_id] : (a.created_by ? userMap[a.created_by] : 'ผู้ใช้งานระบบ'),
+                'ผู้ตรวจนับ (Staff)': a.recorder_id ? userMap[a.recorder_id] : (a.created_by ? userMap[a.created_by] : (CURRENT_USER ? `${CURRENT_USER.full_name} (${CURRENT_USER.staff_code || '-'})` : 'ผู้ใช้งานระบบ')),
                 'จำนวนที่นับได้จริง (Set)': a.actual_qty ?? a.quantity ?? 0,
                 'หมายเหตุ': a.note || '-'
             }));
             const sheet = XLSX.utils.json_to_sheet(auditData.length ? auditData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
-            XLSX.utils.book_append_sheet(workbook, sheet, "4. สรุปยอดนับประจำวัน");
+            XLSX.utils.book_append_sheet(workbook, sheet, "4. สรุปยอดนับประจำเวร");
         }
 
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
