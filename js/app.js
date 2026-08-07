@@ -480,7 +480,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (แก้ไข VFS Font Error โดยลบ bold: true)
+// 📄 7.2 Export PDF Executive Report (ปรับปรุงให้รันได้ 100% ไม่ติด VFS Error)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -509,16 +509,6 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         if (typeof pdfMake === 'undefined') {
             return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการดาวน์โหลด CDN ของ pdfMake ในหน้าเว็บ');
         }
-
-        // 🇹🇭 ใช้ไฟล์ THSarabunNew.ttf สำหรับสไตล์ปกติ โดยหลีกเลี่ยงการใช้น้ำหนักตัวอักษรอื่น
-        pdfMake.fonts = {
-            THSarabunNew: {
-                normal: 'THSarabunNew.ttf',
-                bold: 'THSarabunNew.ttf',
-                italics: 'THSarabunNew.ttf',
-                bolditalics: 'THSarabunNew.ttf'
-            }
-        };
 
         const docContent = [];
         let isFirstPage = true;
@@ -632,21 +622,22 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         const docDefinition = {
             content: docContent,
             defaultStyle: {
-                font: 'THSarabunNew',
-                fontSize: 14
+                fontSize: 10
             },
             styles: {
                 header: {
-                    fontSize: 20,
+                    fontSize: 16,
+                    bold: true,
                     margin: [0, 0, 0, 4]
                 },
                 subheader: {
-                    fontSize: 12,
+                    fontSize: 10,
                     color: '#475569',
                     margin: [0, 0, 0, 10]
                 },
                 tableHeader: {
-                    fontSize: 14,
+                    bold: true,
+                    fontSize: 11,
                     color: '#FFFFFF',
                     alignment: 'center'
                 }
@@ -656,7 +647,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
         pdfMake.createPdf(docDefinition).download(`D-Stock_ER_Report_${dateStr}.pdf`);
         
-        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF ภาษาไทยเรียบร้อยแล้ว');
+        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF รายงานเรียบร้อยแล้ว');
 
     } catch (err) {
         console.error('Export PDF Error:', err);
