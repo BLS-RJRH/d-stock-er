@@ -507,7 +507,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         });
 
         if (typeof pdfMake === 'undefined') {
-            return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการโหลด CDN ของ pdfmake');
+            return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการดาวน์โหลด CDN ของ pdfMake ในหน้าเว็บ');
         }
 
         pdfMake.fonts = {
