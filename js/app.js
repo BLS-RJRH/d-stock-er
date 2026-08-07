@@ -480,7 +480,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (ปรับปรุงให้รันได้ 100% ไม่ติด VFS Error)
+// 📄 7.2 Export PDF Executive Report (ใช้ html2pdf + ฟอนต์ในโฟลเดอร์ fonts)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -506,53 +506,60 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
         });
 
-        if (typeof pdfMake === 'undefined') {
-            return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการดาวน์โหลด CDN ของ pdfMake ในหน้าเว็บ');
+        if (typeof html2pdf === 'undefined') {
+            return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบ CDN ของ html2pdf ในหน้าเว็บ');
         }
 
-        const docContent = [];
+        // 🏗️ สร้าง Container ชั่วคราวออกแบบแบบฟอร์ม PDF
+        const printContainer = document.createElement('div');
+        printContainer.style.fontFamily = "'THSarabunNew', 'Prompt', sans-serif";
+        printContainer.style.padding = "15px";
+        printContainer.style.color = "#1e293b";
+        printContainer.style.backgroundColor = "#ffffff";
+
         let isFirstPage = true;
 
-        const buildSection = (titleText, headers, rowsData) => {
-            if (!isFirstPage) {
-                docContent.push({ text: '', pageBreak: 'before' });
-            }
+        const buildTableHTML = (titleText, headers, rowsData) => {
+            const pageBreakStyle = !isFirstPage ? 'style="page-break-before: always; pt-4;"' : '';
             isFirstPage = false;
 
-            docContent.push({ text: `รายงาน D-Stock ER: ${titleText}`, style: 'header' });
-            docContent.push({ 
-                text: `ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Admin'}`, 
-                style: 'subheader' 
-            });
-
-            const tableBody = [
-                headers.map(h => ({ text: h, style: 'tableHeader' }))
-            ];
-
+            let rowsHTML = '';
             if (rowsData.length > 0) {
-                rowsData.forEach(row => tableBody.push(row));
+                rowsData.forEach(row => {
+                    rowsHTML += `<tr style="border-bottom: 1px solid #cbd5e1;">`;
+                    row.forEach(cell => {
+                        rowsHTML += `<td style="padding: 6px 8px; font-size: 15px;">${cell}</td>`;
+                    });
+                    rowsHTML += `</tr>`;
+                });
             } else {
-                tableBody.push([{ text: 'ไม่มีข้อมูล', colSpan: headers.length, alignment: 'center', color: '#888888' }, ...Array(headers.length - 1).fill('')]);
+                rowsHTML = `<tr><td colspan="${headers.length}" style="text-align: center; padding: 10px; font-size: 15px; color: #64748b;">ไม่มีข้อมูล</td></tr>`;
             }
 
-            docContent.push({
-                table: {
-                    headerRows: 1,
-                    widths: headers.map(() => '*'),
-                    body: tableBody
-                },
-                layout: {
-                    fillColor: function (rowIndex) {
-                        return (rowIndex === 0) ? '#1E293B' : (rowIndex % 2 === 0 ? '#F8FAFC' : null);
-                    },
-                    hLineWidth: () => 0.5,
-                    vLineWidth: () => 0.5,
-                    hLineColor: () => '#CBD5E1',
-                    vLineColor: () => '#CBD5E1'
-                },
-                margin: [0, 8, 0, 15]
+            let headerHTML = '';
+            headers.forEach(h => {
+                headerHTML += `<th style="padding: 8px; font-size: 16px; font-weight: bold; text-align: left; background-color: #1e293b; color: #ffffff;">${h}</th>`;
             });
+
+            return `
+                <div ${pageBreakStyle}>
+                    <div style="margin-bottom: 10px; border-bottom: 2px solid #0284c7; padding-bottom: 6px;">
+                        <h2 style="font-size: 22px; font-weight: bold; margin: 0; color: #0f172a;">รายงาน D-Stock ER: ${titleText}</h2>
+                        <p style="font-size: 14px; color: #475569; margin: 2px 0 0 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Admin'}</p>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                        <thead>
+                            <tr>${headerHTML}</tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHTML}
+                        </tbody>
+                    </table>
+                </div>
+            `;
         };
+
+        let fullHTML = '';
 
         // 🟢 1. เติมเข้าคลังใหญ่
         if (isRestockChecked) {
@@ -568,7 +575,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 `${t.quantity} Set`,
                 t.note || '-'
             ]);
-            buildSection("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows);
+            fullHTML += buildTableHTML("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows);
         }
 
         // 🔵 2. จ่าย-คืน คลังย่อย
@@ -584,7 +591,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 t.to_user_id ? userMap[t.to_user_id] : 'ผู้ใช้งานระบบ',
                 `${t.quantity} Set`
             ]);
-            buildSection("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows);
+            fullHTML += buildTableHTML("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows);
         }
 
         // 🟡 3. ประวัติการแจกใช้งาน
@@ -600,7 +607,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 (d.recipient_info || d.note || '-').replace(/^แจกให้:\s*/, ''),
                 `${d.quantity} Set`
             ]);
-            buildSection("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows);
+            fullHTML += buildTableHTML("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows);
         }
 
         // 📋 4. บันทึกตรวจนับประจำเวร
@@ -616,38 +623,24 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 `${a.actual_qty ?? 0} Set`,
                 a.note || '-'
             ]);
-            buildSection("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'หมายเหตุ'], rows);
+            fullHTML += buildTableHTML("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'หมายเหตุ'], rows);
         }
 
-        const docDefinition = {
-            content: docContent,
-            defaultStyle: {
-                fontSize: 10
-            },
-            styles: {
-                header: {
-                    fontSize: 16,
-                    bold: true,
-                    margin: [0, 0, 0, 4]
-                },
-                subheader: {
-                    fontSize: 10,
-                    color: '#475569',
-                    margin: [0, 0, 0, 10]
-                },
-                tableHeader: {
-                    bold: true,
-                    fontSize: 11,
-                    color: '#FFFFFF',
-                    alignment: 'center'
-                }
-            }
-        };
+        printContainer.innerHTML = fullHTML;
 
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
-        pdfMake.createPdf(docDefinition).download(`D-Stock_ER_Report_${dateStr}.pdf`);
+        const opt = {
+            margin:       [8, 8, 8, 8],
+            filename:     `D-Stock_ER_Report_${dateStr}.pdf`,
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2, useCORS: true, logging: false },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        // สั่งสร้างและดาวน์โหลดไฟล์ PDF
+        await html2pdf().set(opt).from(printContainer).save();
         
-        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF รายงานเรียบร้อยแล้ว');
+        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF รายงานภาษาไทยเรียบร้อยแล้ว');
 
     } catch (err) {
         console.error('Export PDF Error:', err);
