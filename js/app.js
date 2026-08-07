@@ -219,16 +219,45 @@ document.getElementById('btnIssue')?.addEventListener('click', async () => {
 // -------------------------------------------------------------
 // 🩺 5. ฟังก์ชันฝั่งคลังย่อย (Distribute & Return)
 // -------------------------------------------------------------
-document.getElementById('btnDistribute')?.addEventListener('click', async () => {
-    const recipientInput = document.getElementById('recipientInfo');
-    const qtyInput = document.getElementById('distributeQty');
-    const recipient = recipientInput.value.trim();
-    const qty = parseInt(qtyInput.value);
 
-    if (!recipient) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุผู้รับ / เลข HN / จุดงาน');
+// 👁️ ควบคุมการเปิด/ปิด ช่องกรอกข้อความเมื่อเลือก "อื่นๆ (ระบุ)"
+document.getElementById('recipientSelect')?.addEventListener('change', (e) => {
+    const otherInput = document.getElementById('recipientOtherInput');
+    if (!otherInput) return;
+
+    if (e.target.value === 'OTHER') {
+        otherInput.classList.remove('hidden');
+        otherInput.focus();
+    } else {
+        otherInput.classList.add('hidden');
+        otherInput.value = '';
+    }
+});
+
+// 📝 ปุ่มบันทึกการแจกของ
+document.getElementById('btnDistribute')?.addEventListener('click', async () => {
+    const recipientSelect = document.getElementById('recipientSelect');
+    const recipientOtherInput = document.getElementById('recipientOtherInput');
+    const qtyInput = document.getElementById('distributeQty');
+    
+    const selectedValue = recipientSelect ? recipientSelect.value : '';
+    const otherText = recipientOtherInput ? recipientOtherInput.value.trim() : '';
+    const qty = parseInt(qtyInput ? qtyInput.value : '0');
+
+    // 💡 คำนวณชื่อผู้รับที่จะบันทึกลง Database
+    let recipient = '';
+    if (selectedValue === 'OTHER') {
+        if (!otherText) {
+            return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุชื่อผู้รับในช่องอื่นๆ');
+        }
+        recipient = otherText;
+    } else {
+        recipient = selectedValue;
+    }
+
+    if (!recipient) return toastWarning('กรุณากรอกข้อมูล', 'โปรดเลือกผู้รับเวชภัณฑ์');
     if (!qty || qty <= 0) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่ต้องการแจก');
 
-    // 💡 ส่งค่าชื่อผู้รับเข้าฐานข้อมูลตรงๆ โดยยกเลิกคำว่า "แจกให้: "
     const { error } = await supabase.rpc('distribute_item', {
         p_item_id: 1,
         p_recipient_info: recipient,
@@ -239,8 +268,15 @@ document.getElementById('btnDistribute')?.addEventListener('click', async () => 
         toastError('บันทึกการแจกไม่สำเร็จ', error.message);
     } else {
         toastSuccess('ลงบันทึกสำเร็จ! 📝', `แจกของใช้งานให้ ${recipient} จำนวน ${qty} Set เรียบร้อยแล้ว`);
-        recipientInput.value = '';
-        qtyInput.value = '';
+        
+        // เคลียร์ค่าฟอร์มการแจก
+        if (recipientSelect) recipientSelect.value = '';
+        if (recipientOtherInput) {
+            recipientOtherInput.value = '';
+            recipientOtherInput.classList.add('hidden');
+        }
+        if (qtyInput) qtyInput.value = '';
+
         await loadStockData();
     }
 });
