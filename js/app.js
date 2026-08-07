@@ -244,7 +244,6 @@ document.getElementById('btnDistribute')?.addEventListener('click', async () => 
     const otherText = recipientOtherInput ? recipientOtherInput.value.trim() : '';
     const qty = parseInt(qtyInput ? qtyInput.value : '0');
 
-    // 💡 คำนวณชื่อผู้รับที่จะบันทึกลง Database
     let recipient = '';
     if (selectedValue === 'OTHER') {
         if (!otherText) {
@@ -269,7 +268,6 @@ document.getElementById('btnDistribute')?.addEventListener('click', async () => 
     } else {
         toastSuccess('ลงบันทึกสำเร็จ! 📝', `แจกของใช้งานให้ ${recipient} จำนวน ${qty} Set เรียบร้อยแล้ว`);
         
-        // เคลียร์ค่าฟอร์มการแจก
         if (recipientSelect) recipientSelect.value = '';
         if (recipientOtherInput) {
             recipientOtherInput.value = '';
@@ -482,7 +480,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (ตีเส้นกรอบ + แยกหัวข้อละหน้า)
+// 📄 7.2 Export PDF Executive Report (ใช้ pdfMake ภาษาไทยคมชัด 100% + แยกหน้า)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -508,41 +506,60 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
         });
 
-        if (!window.jspdf) {
-            return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการเชื่อมต่อ CDN ของ jsPDF ในหน้าเว็บ');
+        if (typeof pdfMake === 'undefined') {
+            return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการโหลด CDN ของ pdfmake');
         }
 
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        pdfMake.fonts = {
+            THSarabunNew: {
+                normal: 'THSarabunNew.ttf',
+                bold: 'THSarabunNew-Bold.ttf',
+                italics: 'THSarabunNew-Italic.ttf',
+                bolditalics: 'THSarabunNew-BoldItalic.ttf'
+            }
+        };
+
+        const docContent = [];
         let isFirstPage = true;
 
-        const appendSectionToPDF = (titleText, headers, rowsData) => {
+        const buildSection = (titleText, headers, rowsData) => {
             if (!isFirstPage) {
-                doc.addPage();
+                docContent.push({ text: '', pageBreak: 'before' });
             }
             isFirstPage = false;
 
-            doc.setFontSize(16);
-            doc.text(`รายงาน D-Stock ER: ${titleText}`, 14, 15);
-            doc.setFontSize(10);
-            doc.text(`ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name}`, 14, 22);
+            docContent.push({ text: `รายงาน D-Stock ER: ${titleText}`, style: 'header' });
+            docContent.push({ 
+                text: `ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Admin'}`, 
+                style: 'subheader' 
+            });
 
-            doc.autoTable({
-                startY: 26,
-                head: [headers],
-                body: rowsData.length ? rowsData : [['ไม่มีข้อมูล', '-', '-', '-']],
-                theme: 'grid',
-                headStyles: { 
-                    fillColor: [30, 41, 59],
-                    textColor: [255, 255, 255],
-                    fontStyle: 'bold',
-                    halign: 'center'
+            const tableBody = [
+                headers.map(h => ({ text: h, style: 'tableHeader' }))
+            ];
+
+            if (rowsData.length > 0) {
+                rowsData.forEach(row => tableBody.push(row));
+            } else {
+                tableBody.push([{ text: 'ไม่มีข้อมูล', colSpan: headers.length, alignment: 'center', color: '#888888' }, ...Array(headers.length - 1).fill('')]);
+            }
+
+            docContent.push({
+                table: {
+                    headerRows: 1,
+                    widths: headers.map(() => '*'),
+                    body: tableBody
                 },
-                styles: { 
-                    fontSize: 9,
-                    cellPadding: 2.5
+                layout: {
+                    fillColor: function (rowIndex) {
+                        return (rowIndex === 0) ? '#1E293B' : (rowIndex % 2 === 0 ? '#F8FAFC' : null);
+                    },
+                    hLineWidth: () => 0.5,
+                    vLineWidth: () => 0.5,
+                    hLineColor: () => '#CBD5E1',
+                    vLineColor: () => '#CBD5E1'
                 },
-                alternateRowStyles: { fillColor: [248, 250, 252] }
+                margin: [0, 8, 0, 15]
             });
         };
 
@@ -560,7 +577,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 `${t.quantity} Set`,
                 t.note || '-'
             ]);
-            appendSectionToPDF("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows);
+            buildSection("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows);
         }
 
         // 🔵 2. จ่าย-คืน คลังย่อย
@@ -576,10 +593,10 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 t.to_user_id ? userMap[t.to_user_id] : 'ผู้ใช้งานระบบ',
                 `${t.quantity} Set`
             ]);
-            appendSectionToPDF("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows);
+            buildSection("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows);
         }
 
-        // 🟡 3. ประวัติการแจกใช้งาน (แยกหน้าใหม่ และยาวต่อเนื่องได้)
+        // 🟡 3. ประวัติการแจกใช้งาน
         if (isDistributeChecked) {
             let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -592,7 +609,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 (d.recipient_info || d.note || '-').replace(/^แจกให้:\s*/, ''),
                 `${d.quantity} Set`
             ]);
-            appendSectionToPDF("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows);
+            buildSection("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows);
         }
 
         // 📋 4. บันทึกตรวจนับประจำเวร
@@ -608,13 +625,39 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 `${a.actual_qty ?? 0} Set`,
                 a.note || '-'
             ]);
-            appendSectionToPDF("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'หมายเหตุ'], rows);
+            buildSection("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'หมายเหตุ'], rows);
         }
 
+        const docDefinition = {
+            content: docContent,
+            defaultStyle: {
+                font: 'THSarabunNew',
+                fontSize: 14
+            },
+            styles: {
+                header: {
+                    fontSize: 18,
+                    bold: true,
+                    margin: [0, 0, 0, 4]
+                },
+                subheader: {
+                    fontSize: 12,
+                    color: '#475569',
+                    margin: [0, 0, 0, 10]
+                },
+                tableHeader: {
+                    bold: true,
+                    fontSize: 13,
+                    color: '#FFFFFF',
+                    alignment: 'center'
+                }
+            }
+        };
+
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
-        doc.save(`D-Stock_ER_Report_${dateStr}.pdf`);
+        pdfMake.createPdf(docDefinition).download(`D-Stock_ER_Report_${dateStr}.pdf`);
         
-        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF รายงานแบบแยกหน้าเรียบร้อยแล้ว');
+        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF ภาษาไทยเรียบร้อยแล้ว');
 
     } catch (err) {
         console.error('Export PDF Error:', err);
