@@ -480,7 +480,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (ใช้ html2pdf + ฟอนต์ในโฟลเดอร์ fonts)
+// 📄 7.2 Export PDF Executive Report (ปรับให้ชิดขอบบนมากขึ้น)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -510,17 +510,17 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบ CDN ของ html2pdf ในหน้าเว็บ');
         }
 
-        // 🏗️ สร้าง Container ชั่วคราวออกแบบแบบฟอร์ม PDF
+        // 🏗️ สร้าง Container ชั่วคราว (ชิดขอบบนเต็มพื้นที่)
         const printContainer = document.createElement('div');
         printContainer.style.fontFamily = "'THSarabunNew', 'Prompt', sans-serif";
-        printContainer.style.padding = "15px";
+        printContainer.style.padding = "0px 5px";
         printContainer.style.color = "#1e293b";
         printContainer.style.backgroundColor = "#ffffff";
 
         let isFirstPage = true;
 
         const buildTableHTML = (titleText, headers, rowsData) => {
-            const pageBreakStyle = !isFirstPage ? 'style="page-break-before: always; pt-4;"' : '';
+            const pageBreakStyle = !isFirstPage ? 'style="page-break-before: always; padding-top: 0px;"' : '';
             isFirstPage = false;
 
             let rowsHTML = '';
@@ -528,7 +528,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 rowsData.forEach(row => {
                     rowsHTML += `<tr style="border-bottom: 1px solid #cbd5e1;">`;
                     row.forEach(cell => {
-                        rowsHTML += `<td style="padding: 6px 8px; font-size: 15px;">${cell}</td>`;
+                        rowsHTML += `<td style="padding: 5px 8px; font-size: 15px;">${cell}</td>`;
                     });
                     rowsHTML += `</tr>`;
                 });
@@ -538,12 +538,12 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
 
             let headerHTML = '';
             headers.forEach(h => {
-                headerHTML += `<th style="padding: 8px; font-size: 16px; font-weight: bold; text-align: left; background-color: #1e293b; color: #ffffff;">${h}</th>`;
+                headerHTML += `<th style="padding: 6px 8px; font-size: 16px; font-weight: bold; text-align: left; background-color: #1e293b; color: #ffffff;">${h}</th>`;
             });
 
             return `
                 <div ${pageBreakStyle}>
-                    <div style="margin-bottom: 10px; border-bottom: 2px solid #0284c7; padding-bottom: 6px;">
+                    <div style="margin-bottom: 8px; border-bottom: 2px solid #0284c7; padding-bottom: 4px;">
                         <h2 style="font-size: 22px; font-weight: bold; margin: 0; color: #0f172a;">รายงาน D-Stock ER: ${titleText}</h2>
                         <p style="font-size: 14px; color: #475569; margin: 2px 0 0 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Admin'}</p>
                     </div>
@@ -629,18 +629,19 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         printContainer.innerHTML = fullHTML;
 
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
+        
+        // 🎯 กำหนดระยะขอบบนเป็น 3mm ชิดสวยงาม
         const opt = {
-            margin:       [8, 8, 8, 8],
+            margin:       [3, 8, 8, 8],
             filename:     `D-Stock_ER_Report_${dateStr}.pdf`,
             image:        { type: 'jpeg', quality: 0.98 },
             html2canvas:  { scale: 2, useCORS: true, logging: false },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
 
-        // สั่งสร้างและดาวน์โหลดไฟล์ PDF
         await html2pdf().set(opt).from(printContainer).save();
         
-        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF รายงานภาษาไทยเรียบร้อยแล้ว');
+        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF เรียบร้อยแล้ว');
 
     } catch (err) {
         console.error('Export PDF Error:', err);
