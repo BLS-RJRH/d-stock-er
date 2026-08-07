@@ -11,6 +11,9 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- 🌟 SweetAlert2 CDN -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- 📄 jsPDF & AutoTable สำหรับสร้าง PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <!-- 🅰️ Google Font Prompt -->
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style> 
@@ -182,17 +185,17 @@
         </div>
 
         <!-- ------------------------------------------------------------- -->
-        <!-- 5. แผง Export Executive Report (ให้ User ติ๊กเลือกเอง) -->
+        <!-- 5. แผง Export Executive Report (เลือก Excel หรือ PDF) -->
         <!-- ------------------------------------------------------------- -->
         <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-4">
             <div>
                 <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
                     <span>📊 รายงานสรุปภาพรวมระบบ (Executive Report)</span>
                 </h3>
-                <p class="text-xs text-slate-500 mt-0.5">เลือกหัวข้อรายงานที่ต้องการ (เลือกได้มากกว่า 1 ข้อ) และช่วงวันที่ แล้วกดดาวน์โหลดไฟล์ Excel</p>
+                <p class="text-xs text-slate-500 mt-0.5">เลือกหัวข้อรายงานที่ต้องการ (เลือกได้มากกว่า 1 ข้อ) และช่วงวันที่ แล้วเลือกดาวน์โหลดไฟล์ Excel หรือ PDF</p>
             </div>
 
-            <!-- 🎯 Checkboxes เลือกหัวข้อรายงาน (ไม่มีการเลือกเริ่มต้นไว้) -->
+            <!-- 🎯 Checkboxes เลือกหัวข้อรายงาน -->
             <div class="pt-2 border-t space-y-2">
                 <label class="block text-xs font-semibold text-slate-700">📑 เลือกหัวข้อรายงานที่ต้องการดึงข้อมูล:</label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
@@ -215,7 +218,7 @@
                 </div>
             </div>
 
-            <!-- 📅 เลือกช่วงวันที่ + ปุ่มดาวน์โหลด -->
+            <!-- 📅 เลือกช่วงวันที่ + ปุ่มดาวน์โหลดคู่ (Excel & PDF) -->
             <div class="flex flex-col sm:flex-row items-end gap-3 pt-2">
                 <div class="w-full sm:w-auto flex-1">
                     <label class="block text-xs font-semibold text-slate-600 mb-1">📅 วันที่เริ่มต้น</label>
@@ -225,9 +228,14 @@
                     <label class="block text-xs font-semibold text-slate-600 mb-1">📅 วันที่สิ้นสุด</label>
                     <input type="date" id="exportEndDate" class="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
                 </div>
-                <button id="btnExportExcel" type="button" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-6 rounded-xl text-sm transition active:scale-95 whitespace-nowrap shadow-md flex items-center justify-center gap-2">
-                    <span>📥 ดาวน์โหลดรายงาน Excel</span>
-                </button>
+                <div class="flex gap-2 w-full sm:w-auto">
+                    <button id="btnExportExcel" type="button" class="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition active:scale-95 whitespace-nowrap shadow-md flex items-center justify-center gap-1.5">
+                        <span>📥 ดาวน์โหลด Excel</span>
+                    </button>
+                    <button id="btnExportPDF" type="button" class="flex-1 sm:flex-none bg-rose-600 hover:bg-rose-700 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition active:scale-95 whitespace-nowrap shadow-md flex items-center justify-center gap-1.5">
+                        <span>📄 ดาวน์โหลด PDF</span>
+                    </button>
+                </div>
             </div>
         </div>
 
