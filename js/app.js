@@ -480,7 +480,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (ปรับให้ชิดขอบบนมากขึ้น)
+// 📄 7.2 Export PDF Executive Report (ชิดขอบบนสุด ไม่เหลือพื้นที่ว่าง)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -510,17 +510,21 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบ CDN ของ html2pdf ในหน้าเว็บ');
         }
 
-        // 🏗️ สร้าง Container ชั่วคราว (ชิดขอบบนเต็มพื้นที่)
+        // 🏗️ คอนเทนเนอร์ชั่วคราว (ลบ Margin & Padding ทั้งหมดให้ชิดขอบบนสุด)
         const printContainer = document.createElement('div');
         printContainer.style.fontFamily = "'THSarabunNew', 'Prompt', sans-serif";
-        printContainer.style.padding = "0px 5px";
         printContainer.style.color = "#1e293b";
         printContainer.style.backgroundColor = "#ffffff";
+        printContainer.style.margin = "0";
+        printContainer.style.padding = "0";
 
         let isFirstPage = true;
 
         const buildTableHTML = (titleText, headers, rowsData) => {
-            const pageBreakStyle = !isFirstPage ? 'style="page-break-before: always; padding-top: 0px;"' : '';
+            // 🎯 กำหนดให้ชิดขอบบนสุดโดยไม่มี padding หรือ margin รบกวน
+            const pageBreakStyle = !isFirstPage 
+                ? 'style="page-break-before: always; margin-top: 0 !important; padding-top: 0 !important;"' 
+                : 'style="margin-top: 0 !important; padding-top: 0 !important;"';
             isFirstPage = false;
 
             let rowsHTML = '';
@@ -528,12 +532,12 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 rowsData.forEach(row => {
                     rowsHTML += `<tr style="border-bottom: 1px solid #cbd5e1;">`;
                     row.forEach(cell => {
-                        rowsHTML += `<td style="padding: 5px 8px; font-size: 15px;">${cell}</td>`;
+                        rowsHTML += `<td style="padding: 4px 8px; font-size: 15px;">${cell}</td>`;
                     });
                     rowsHTML += `</tr>`;
                 });
             } else {
-                rowsHTML = `<tr><td colspan="${headers.length}" style="text-align: center; padding: 10px; font-size: 15px; color: #64748b;">ไม่มีข้อมูล</td></tr>`;
+                rowsHTML = `<tr><td colspan="${headers.length}" style="text-align: center; padding: 8px; font-size: 15px; color: #64748b;">ไม่มีข้อมูล</td></tr>`;
             }
 
             let headerHTML = '';
@@ -542,12 +546,12 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             });
 
             return `
-                <div ${pageBreakStyle}>
-                    <div style="margin-bottom: 8px; border-bottom: 2px solid #0284c7; padding-bottom: 4px;">
-                        <h2 style="font-size: 22px; font-weight: bold; margin: 0; color: #0f172a;">รายงาน D-Stock ER: ${titleText}</h2>
-                        <p style="font-size: 14px; color: #475569; margin: 2px 0 0 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Admin'}</p>
+                <div class="pdf-section" ${pageBreakStyle}>
+                    <div style="margin-top: 0; margin-bottom: 6px; border-bottom: 2px solid #0284c7; padding-bottom: 4px;">
+                        <h2 style="font-size: 20px; font-weight: bold; margin: 0; padding: 0; color: #0f172a; line-height: 1.2;">รายงาน D-Stock ER: ${titleText}</h2>
+                        <p style="font-size: 13px; color: #475569; margin: 2px 0 0 0; padding: 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Admin'}</p>
                     </div>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
                         <thead>
                             <tr>${headerHTML}</tr>
                         </thead>
@@ -630,13 +634,14 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
 
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
         
-        // 🎯 กำหนดระยะขอบบนเป็น 3mm ชิดสวยงาม
+        // 🎯 บังคับตั้งค่า Margin [บน, ซ้าย, ล่าง, ขวา] ชิดขอบบนสุดที่ 2mm
         const opt = {
-            margin:       [3, 8, 8, 8],
+            margin:       [2, 6, 6, 6],
             filename:     `D-Stock_ER_Report_${dateStr}.pdf`,
             image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true, logging: false },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak:    { mode: ['css', 'legacy'] }
         };
 
         await html2pdf().set(opt).from(printContainer).save();
@@ -648,7 +653,6 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         toastError('เกิดข้อผิดพลาดในการสร้าง PDF', err.message);
     }
 });
-
 // -------------------------------------------------------------
 // 🚪 8. ปุ่ม Logout
 // -------------------------------------------------------------
