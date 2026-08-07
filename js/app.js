@@ -345,7 +345,7 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
 });
 
 // -------------------------------------------------------------
-// 📊 7. Export Executive Report (อ่านค่าจาก Checkbox)
+// 📊 7.1 Export Excel Report (ปรับขนาดคอลัมน์ Auto Width)
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -365,7 +365,6 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
     const endDate = document.getElementById('exportEndDate')?.value;
 
     try {
-        // ดึงรายชื่อ Profile มาแปะชื่อผู้ใช้งาน
         const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
         const userMap = {};
         (profiles || []).forEach(p => {
@@ -374,15 +373,30 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 
         const workbook = XLSX.utils.book_new();
 
-        // 🟢 1. เติมเข้าคลังใหญ่ (RESTOCK - ตัดรายการปรับยอดจากการนับประจำเวรออก)
+        const createSheetWithWidth = (dataList) => {
+            const sheet = XLSX.utils.json_to_sheet(dataList.length ? dataList : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            if (dataList.length > 0) {
+                const colWidths = [];
+                Object.keys(dataList[0]).forEach(key => {
+                    let maxLen = key.toString().length;
+                    dataList.forEach(row => {
+                        const val = row[key] ? row[key].toString() : '';
+                        if (val.length > maxLen) maxLen = val.length;
+                    });
+                    colWidths.push({ wch: Math.max(maxLen + 5, 18) });
+                });
+                sheet['!cols'] = colWidths;
+            }
+            return sheet;
+        };
+
+        // 🟢 1. เติมเข้าคลังใหญ่
         if (isRestockChecked) {
             let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
             if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
 
             const { data: restockList } = await query;
-
-            // ✂️ กรองเฉพาะการเติมสต๊อกจริง ตัดรายการที่เป็นการปรับยอดจากการนับออก
             const filteredRestock = (restockList || []).filter(t => {
                 const note = t.note || '';
                 return !note.includes('ปรับยอดจากการนับ') && !note.includes('Diff:');
@@ -395,11 +409,10 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ / เลขที่อ้างอิง': t.note || '-'
             }));
-            const sheet = XLSX.utils.json_to_sheet(restockData.length ? restockData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
-            XLSX.utils.book_append_sheet(workbook, sheet, "1. เติมเข้าคลังใหญ่");
+            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(restockData), "1. เติมเข้าคลังใหญ่");
         }
 
-        // 🔵 2. จ่าย-คืน คลังย่อย (ISSUE & RETURN)
+        // 🔵 2. จ่าย-คืน คลังย่อย
         if (isTransferChecked) {
             let query = supabase.from('stock_transactions').select('*').in('type', ['ISSUE', 'RETURN']).order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -413,11 +426,10 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ': t.note || '-'
             }));
-            const sheet = XLSX.utils.json_to_sheet(transferData.length ? transferData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
-            XLSX.utils.book_append_sheet(workbook, sheet, "2. จ่าย-คืน คลังย่อย");
+            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(transferData), "2. จ่าย-คืน คลังย่อย");
         }
 
-        // 🟡 3. ประวัติการแจกใช้งาน (DISTRIBUTE)
+        // 🟡 3. ประวัติการแจกใช้งาน
         if (isDistributeChecked) {
             let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -434,11 +446,10 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                     'จำนวนที่แจก (Set)': d.quantity
                 };
             });
-            const sheet = XLSX.utils.json_to_sheet(distributeData.length ? distributeData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
-            XLSX.utils.book_append_sheet(workbook, sheet, "3. ประวัติการแจกใช้งาน");
+            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(distributeData), "3. ประวัติการแจกใช้งาน");
         }
 
-        // 📋 4. บันทึกตรวจนับประจำเวร (DAILY AUDIT - ดึงคอลัมน์ counted_by โดยตรง)
+        // 📋 4. บันทึกตรวจนับประจำเวร
         if (isAuditChecked) {
             let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -456,18 +467,158 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                     'หมายเหตุ': a.note || '-'
                 };
             });
-            const sheet = XLSX.utils.json_to_sheet(auditData.length ? auditData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
-            XLSX.utils.book_append_sheet(workbook, sheet, "4. สรุปยอดนับประจำเวร");
+            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(auditData), "4. สรุปยอดนับประจำเวร");
         }
 
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
         XLSX.writeFile(workbook, `D-Stock_ER_Report_${dateStr}.xlsx`);
         
-        toastSuccess('ส่งออกรายงานสำเร็จ 📥', 'ดาวน์โหลดไฟล์ Excel สรุปข้อมูลหัวข้อที่เลือกเรียบร้อยแล้ว');
+        toastSuccess('ส่งออก Excel สำเร็จ 📥', 'ดาวน์โหลดไฟล์ Excel สรุปข้อมูลเรียบร้อยแล้ว');
 
     } catch (err) {
-        console.error('Export Error:', err);
+        console.error('Export Excel Error:', err);
         toastError('เกิดข้อผิดพลาดในการดึงรายงาน', err.message);
+    }
+});
+
+// -------------------------------------------------------------
+// 📄 7.2 Export PDF Executive Report (ตีเส้นกรอบ + แยกหัวข้อละหน้า)
+// -------------------------------------------------------------
+document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
+    if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
+        return toastError('ปฏิเสธสิทธิ์การเข้าถึง', 'คุณไม่มีสิทธิ์ดาวน์โหลดรายงานภาพรวมระบบ');
+    }
+
+    const isRestockChecked = document.getElementById('chkRestock')?.checked;
+    const isTransferChecked = document.getElementById('chkTransfer')?.checked;
+    const isDistributeChecked = document.getElementById('chkDistribute')?.checked;
+    const isAuditChecked = document.getElementById('chkAudit')?.checked;
+
+    if (!isRestockChecked && !isTransferChecked && !isDistributeChecked && !isAuditChecked) {
+        return toastWarning('กรุณาเลือกหัวข้อ', 'โปรดเลือกหัวข้อรายงานอย่างน้อย 1 รายการ');
+    }
+
+    const startDate = document.getElementById('exportStartDate')?.value;
+    const endDate = document.getElementById('exportEndDate')?.value;
+
+    try {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
+        const userMap = {};
+        (profiles || []).forEach(p => {
+            userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
+        });
+
+        if (!window.jspdf) {
+            return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการเชื่อมต่อ CDN ของ jsPDF ในหน้าเว็บ');
+        }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        let isFirstPage = true;
+
+        const appendSectionToPDF = (titleText, headers, rowsData) => {
+            if (!isFirstPage) {
+                doc.addPage();
+            }
+            isFirstPage = false;
+
+            doc.setFontSize(16);
+            doc.text(`รายงาน D-Stock ER: ${titleText}`, 14, 15);
+            doc.setFontSize(10);
+            doc.text(`ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name}`, 14, 22);
+
+            doc.autoTable({
+                startY: 26,
+                head: [headers],
+                body: rowsData.length ? rowsData : [['ไม่มีข้อมูล', '-', '-', '-']],
+                theme: 'grid',
+                headStyles: { 
+                    fillColor: [30, 41, 59],
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold',
+                    halign: 'center'
+                },
+                styles: { 
+                    fontSize: 9,
+                    cellPadding: 2.5
+                },
+                alternateRowStyles: { fillColor: [248, 250, 252] }
+            });
+        };
+
+        // 🟢 1. เติมเข้าคลังใหญ่
+        if (isRestockChecked) {
+            let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: list } = await query;
+            const filtered = (list || []).filter(t => !(t.note || '').includes('ปรับยอดจากการนับ') && !(t.note || '').includes('Diff:'));
+            const rows = filtered.map(t => [
+                new Date(t.created_at).toLocaleString('th-TH'),
+                t.to_user_id ? userMap[t.to_user_id] : 'ระบบ / Admin',
+                `${t.quantity} Set`,
+                t.note || '-'
+            ]);
+            appendSectionToPDF("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows);
+        }
+
+        // 🔵 2. จ่าย-คืน คลังย่อย
+        if (isTransferChecked) {
+            let query = supabase.from('stock_transactions').select('*').in('type', ['ISSUE', 'RETURN']).order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: list } = await query;
+            const rows = (list || []).map(t => [
+                new Date(t.created_at).toLocaleString('th-TH'),
+                t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
+                t.to_user_id ? userMap[t.to_user_id] : 'ผู้ใช้งานระบบ',
+                `${t.quantity} Set`
+            ]);
+            appendSectionToPDF("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows);
+        }
+
+        // 🟡 3. ประวัติการแจกใช้งาน (แยกหน้าใหม่ และยาวต่อเนื่องได้)
+        if (isDistributeChecked) {
+            let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: list } = await query;
+            const rows = (list || []).map(d => [
+                new Date(d.created_at).toLocaleString('th-TH'),
+                d.distributor_id ? userMap[d.distributor_id] : 'ผู้ใช้งานระบบ',
+                (d.recipient_info || d.note || '-').replace(/^แจกให้:\s*/, ''),
+                `${d.quantity} Set`
+            ]);
+            appendSectionToPDF("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows);
+        }
+
+        // 📋 4. บันทึกตรวจนับประจำเวร
+        if (isAuditChecked) {
+            let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: list } = await query;
+            const rows = (list || []).map(a => [
+                new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
+                a.counted_by ? userMap[a.counted_by] : 'ผู้ใช้งานระบบ',
+                `${a.actual_qty ?? 0} Set`,
+                a.note || '-'
+            ]);
+            appendSectionToPDF("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'หมายเหตุ'], rows);
+        }
+
+        const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
+        doc.save(`D-Stock_ER_Report_${dateStr}.pdf`);
+        
+        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF รายงานแบบแยกหน้าเรียบร้อยแล้ว');
+
+    } catch (err) {
+        console.error('Export PDF Error:', err);
+        toastError('เกิดข้อผิดพลาดในการสร้าง PDF', err.message);
     }
 });
 
