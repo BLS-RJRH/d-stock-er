@@ -480,7 +480,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (ใช้ pdfMake ภาษาไทยคมชัด 100% + แยกหน้า)
+// 📄 7.2 Export PDF Executive Report (แก้ไข VFS Font Error)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -510,12 +510,13 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการดาวน์โหลด CDN ของ pdfMake ในหน้าเว็บ');
         }
 
+        // 🇹🇭 แก้ไขให้ใช้ THSarabunNew.ttf สำหรับทุกสไตล์ตัวอักษร
         pdfMake.fonts = {
             THSarabunNew: {
                 normal: 'THSarabunNew.ttf',
-                bold: 'THSarabunNew-Bold.ttf',
-                italics: 'THSarabunNew-Italic.ttf',
-                bolditalics: 'THSarabunNew-BoldItalic.ttf'
+                bold: 'THSarabunNew.ttf',
+                italics: 'THSarabunNew.ttf',
+                bolditalics: 'THSarabunNew.ttf'
             }
         };
 
