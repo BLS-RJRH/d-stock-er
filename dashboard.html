@@ -12,13 +12,16 @@
     <!-- 🌟 SweetAlert2 CDN -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
-    <!-- 📄 pdfMake สำหรับสร้าง PDF -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+    <!-- 📄 html2pdf CDN สำหรับสร้าง PDF ภาษาไทยคมชัด 100% -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-    <!-- 🅰️ Google Font Prompt -->
+    <!-- 🅰️ Google Font Prompt & THSarabunNew (ดึงฟอนต์จากโฟลเดอร์ fonts) -->
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style> 
+        @font-face {
+            font-family: 'THSarabunNew';
+            src: url('./fonts/THSarabunNew.ttf') format('truetype');
+        }
         body, .swal2-popup { 
             font-family: 'Prompt', sans-serif !important; 
         } 
