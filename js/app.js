@@ -480,7 +480,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (แก้ไข VFS Font Error)
+// 📄 7.2 Export PDF Executive Report (แก้ไข VFS Font Error โดยลบ bold: true)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -510,7 +510,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการดาวน์โหลด CDN ของ pdfMake ในหน้าเว็บ');
         }
 
-        // 🇹🇭 แก้ไขให้ใช้ THSarabunNew.ttf สำหรับทุกสไตล์ตัวอักษร
+        // 🇹🇭 ใช้ไฟล์ THSarabunNew.ttf สำหรับสไตล์ปกติ โดยหลีกเลี่ยงการใช้น้ำหนักตัวอักษรอื่น
         pdfMake.fonts = {
             THSarabunNew: {
                 normal: 'THSarabunNew.ttf',
@@ -637,8 +637,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             },
             styles: {
                 header: {
-                    fontSize: 18,
-                    bold: true,
+                    fontSize: 20,
                     margin: [0, 0, 0, 4]
                 },
                 subheader: {
@@ -647,8 +646,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                     margin: [0, 0, 0, 10]
                 },
                 tableHeader: {
-                    bold: true,
-                    fontSize: 13,
+                    fontSize: 14,
                     color: '#FFFFFF',
                     alignment: 'center'
                 }
