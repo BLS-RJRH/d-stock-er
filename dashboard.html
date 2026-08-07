@@ -1,249 +1,689 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>D-Stock ER - ระบบบริหารจัดการสต๊อกชุด gift set</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script> tailwind.config = { corePlugins: { preflight: true } } </script>
-    <!-- SheetJS CDN สำหรับ Export Excel -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- 🌟 SweetAlert2 CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
-    <!-- 📄 pdfMake สำหรับสร้าง PDF ภาษาไทยคมชัด 100% -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+import { supabase } from './supabaseClient.js';
 
-    <!-- 🅰️ Google Font Prompt -->
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style> 
-        body, .swal2-popup { 
-            font-family: 'Prompt', sans-serif !important; 
-        } 
-    </style>
-</head>
-<body class="bg-slate-100 min-h-screen p-4 md:p-8">
+let CURRENT_USER = null;
 
-    <div class="max-w-5xl mx-auto space-y-6">
+const MIN_CENTRAL_STOCK = 30;
+const MIN_SUB_STOCK = 10;
+
+// 🟢 ฟังก์ชัน SweetAlert2 สำหรับใช้งานซ้ำ
+const toastSuccess = (title, text) => {
+    Swal.fire({
+        icon: 'success',
+        title: title,
+        text: text,
+        confirmButtonColor: '#10B981',
+        customClass: { popup: 'rounded-2xl' }
+    });
+};
+
+const toastError = (title, text) => {
+    Swal.fire({
+        icon: 'error',
+        title: title,
+        text: text,
+        confirmButtonColor: '#EF4444',
+        customClass: { popup: 'rounded-2xl' }
+    });
+};
+
+const toastWarning = (title, text) => {
+    Swal.fire({
+        icon: 'warning',
+        title: title,
+        text: text,
+        confirmButtonColor: '#F59E0B',
+        customClass: { popup: 'rounded-2xl' }
+    });
+};
+
+// -------------------------------------------------------------
+// 🔒 1. ตรวจสอบ Session การเข้าสู่ระบบ
+// -------------------------------------------------------------
+async function initProductionUser() {
+    try {
+        const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+
+        if (sessionErr || !session) {
+            await Swal.fire({
+                icon: 'warning',
+                title: 'กรุณาเข้าสู่ระบบก่อนใช้งาน',
+                confirmButtonColor: '#DC2626'
+            });
+            window.location.href = './index.html';
+            return;
+        }
+
+        const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+        if (profileErr || !profile) {
+            toastError('ไม่พบข้อมูลสิทธิ์ผู้ใช้งาน', 'กรุณาติดต่อ Admin เพื่อตรวจสอบสิทธิ์');
+            await supabase.auth.signOut();
+            window.location.href = './index.html';
+            return;
+        }
+
+        CURRENT_USER = profile;
+
+        const nameElem = document.getElementById('userFullName');
+        const badgeElem = document.getElementById('userRoleBadge');
         
-        <!-- ------------------------------------------------------------- -->
-        <!-- 1. Header & User Profile Bar -->
-        <!-- ------------------------------------------------------------- -->
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div class="flex items-center gap-3">
-                <img src="https://wddkaxdspxgaafuajpms.supabase.co/storage/v1/object/public/LOGO/ER_EMS%20LOGO.png" 
-                     alt="ER EMS Logo" 
-                     class="h-12 object-contain mix-blend-multiply">
-                <div>
-                    <h1 class="text-xl font-bold text-slate-800">🏥 D-Stock ER</h1>
-                    <p class="text-xs text-slate-500">ระบบบริหารจัดการสต๊อกชุด gift set</p>
-                </div>
-            </div>
+        if (nameElem) nameElem.innerText = profile.full_name || session.user.email;
+        if (badgeElem) {
+            const roleNames = {
+                'SUPER_ADMIN': '👑 Super Admin',
+                'ADMIN': '🛡️ Admin',
+                'CENTER_STAFF': '📦 Center Staff',
+                'SUB_STAFF': '🩺 Sub Staff'
+            };
+            badgeElem.innerText = roleNames[profile.role] || profile.role;
+        }
 
-            <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end border-t md:border-t-0 pt-3 md:pt-0">
-                <!-- ปุ่มไปยังหน้าจัดการ Staff (แสดงเฉพาะ Super Admin) -->
-                <a href="./staff.html" id="btnManageStaff" class="hidden bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold px-3 py-2 rounded-xl border border-purple-200 transition active:scale-95 flex items-center gap-1">
-                    👥 จัดการ Staff
-                </a>
+        setupUIByRole(profile.role);
+        await loadStockData();
 
-                <!-- ข้อมูลผู้ใช้งาน -->
-                <div class="text-right">
-                    <p id="userFullName" class="text-sm font-bold text-slate-800">กำลังโหลด...</p>
-                    <span id="userRoleBadge" class="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full border border-slate-200">
-                        -
-                    </span>
-                </div>
+    } catch (err) {
+        console.error('Init Production Error:', err);
+        toastError('เกิดข้อผิดพลาดในการเริ่มต้นระบบ', err.message);
+    }
+}
 
-                <!-- 🔑 ปุ่มเปลี่ยนรหัสผ่าน -->
-                <a href="./reset-password.html" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 transition active:scale-95 flex items-center gap-1">
-                    🔑 เปลี่ยนรหัสผ่าน
-                </a>
+// -------------------------------------------------------------
+// 🎨 2. ควบคุมการแสดงผล UI
+// -------------------------------------------------------------
+function setupUIByRole(role) {
+    const centralPanel = document.getElementById('centralPanel');
+    const subPanel = document.getElementById('subPanel');
+    const exportSection = document.getElementById('btnExportExcel')?.closest('div.bg-white');
+    const btnManageStaff = document.getElementById('btnManageStaff');
 
-                <!-- 🚪 ปุ่มออกจากระบบ -->
-                <button id="btnLogout" type="button" class="bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium px-3.5 py-2 rounded-xl border border-red-200 transition active:scale-95">
-                    🚪 ออกจากระบบ
-                </button>
-            </div>
-        </div>
+    if (role === 'SUPER_ADMIN') {
+        btnManageStaff?.classList.remove('hidden');
+    } else {
+        btnManageStaff?.classList.add('hidden');
+    }
 
-        <!-- ------------------------------------------------------------- -->
-        <!-- 2. แผงควบคุม คลังใหญ่ (Central Stock Panel) -->
-        <!-- ------------------------------------------------------------- -->
-        <div id="centralPanel" class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-4">
-            <div class="flex justify-between items-center border-b pb-3">
-                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <span>📦 คลังใหญ่ ER (Central Stock)</span>
-                </h2>
-                <span class="text-xs font-semibold bg-red-100 text-red-800 px-2.5 py-1 rounded-full">Center Staff / Admin</span>
-            </div>
+    if (role === 'SUPER_ADMIN' || role === 'ADMIN') {
+        centralPanel?.classList.remove('hidden');
+        subPanel?.classList.remove('hidden');
+        exportSection?.classList.remove('hidden');
+    } else if (role === 'CENTER_STAFF') {
+        centralPanel?.classList.remove('hidden');
+        subPanel?.classList.add('hidden');
+        exportSection?.classList.add('hidden');
+    } else if (role === 'SUB_STAFF') {
+        centralPanel?.classList.add('hidden');
+        subPanel?.classList.remove('hidden');
+        exportSection?.classList.add('hidden');
+    }
+}
 
-            <!-- สรุปยอดคลังใหญ่ -->
-            <div class="bg-red-50 border border-red-100 p-4 rounded-xl flex justify-between items-center">
-                <div>
-                    <p class="text-xs text-red-600 font-medium">ยอดสต๊อกคงเหลือคลังใหญ่</p>
-                    <p class="text-3xl font-bold text-red-700 mt-1"><span id="centralQtyDisplay">0</span> <span class="text-base font-normal">Set</span></p>
-                </div>
-            </div>
+// -------------------------------------------------------------
+// 📦 3. ดึงข้อมูลสต๊อก Real-time
+// -------------------------------------------------------------
+async function loadStockData() {
+    const { data: central } = await supabase
+        .from('central_stock')
+        .select('current_qty')
+        .eq('item_id', 1)
+        .maybeSingle();
 
-            <!-- ฟอร์มเติมของ & จ่ายของ -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- ➕ เติมของเข้าคลังใหญ่ -->
-                <div class="p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
-                    <h3 class="text-xs font-bold text-slate-700">➕ เติมของเข้าคลังใหญ่ (Restock)</h3>
-                    <div class="flex gap-2">
-                        <input type="number" id="restockQty" placeholder="จำนวนที่เติม" class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
-                        <button id="btnRestock" type="button" class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg text-sm whitespace-nowrap transition active:scale-95">เติมของ</button>
-                    </div>
-                </div>
+    const centralQty = central ? central.current_qty : 0;
+    const centralElem = document.getElementById('centralQtyDisplay');
+    const centralCard = centralElem?.closest('.bg-red-50') || centralElem?.parentElement?.parentElement;
 
-                <!-- ➡️ จ่ายของออกให้คลังย่อย -->
-                <div class="p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
-                    <h3 class="text-xs font-bold text-slate-700">➡️ จ่ายของออกให้คลังย่อย (Issue)</h3>
-                    <div class="flex gap-2">
-                        <input type="number" id="issueQty" placeholder="จำนวนที่จ่าย" class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
-                        <button id="btnIssue" type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm whitespace-nowrap transition active:scale-95">จ่ายออก</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+    if (centralElem) centralElem.innerText = centralQty;
 
-        <!-- ------------------------------------------------------------- -->
-        <!-- 3. แผงควบคุม คลังย่อย (Sub Stock Panel) -->
-        <!-- ------------------------------------------------------------- -->
-        <div id="subPanel" class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-4">
-            <div class="flex justify-between items-center border-b pb-3">
-                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <span>🩺 คลังย่อย EMS (Sub Stock)</span>
-                </h2>
-                <span class="text-xs font-semibold bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full">Sub Staff / Admin</span>
-            </div>
+    if (centralCard) {
+        if (centralQty <= MIN_CENTRAL_STOCK) {
+            centralCard.className = "bg-red-100 border-2 border-red-500 p-4 rounded-xl animate-pulse";
+            if (centralElem) centralElem.innerHTML = `${centralQty} <span class="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full ml-2">⚠️ สต๊อกต่ำวิกฤต</span>`;
+        } else {
+            centralCard.className = "bg-red-50 border border-red-100 p-4 rounded-xl";
+        }
+    }
 
-            <!-- สรุปยอดคลังย่อย -->
-            <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex justify-between items-center">
-                <div>
-                    <p class="text-xs text-blue-600 font-medium">ยอดสต๊อกคงเหลือคลังย่อย EMS </p>
-                    <p class="text-3xl font-bold text-blue-700 mt-1"><span id="subQtyDisplay">0</span> <span class="text-base font-normal">Set</span></p>
-                </div>
-            </div>
+    const { data: sub } = await supabase
+        .from('sub_stock')
+        .select('current_qty')
+        .eq('item_id', 1)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-            <!-- ฟอร์มบันทึกการแจกของ & ส่งคืน -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <!-- 📝 บันทึกแจกของ -->
-                <div class="md:col-span-2 p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
-                    <h3 class="text-xs font-bold text-slate-700">📝 ลงบันทึกการแจกใช้งาน (Distribute)</h3>
-                    <div class="space-y-2">
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <!-- 🔽 Dropdown ตัวเลือกผู้รับ -->
-                            <select id="recipientSelect" class="sm:col-span-2 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                                <option value="">-- เลือกผู้รับ --</option>
-                                <option value="ร่วมกตัญญู">ร่วมกตัญญู</option>
-                                <option value="ป่อเต็กตึ๊ง">ป่อเต็กตึ๊ง</option>
-                                <option value="พิรุณ">พิรุณ</option>
-                                <option value="OTHER">อื่นๆ (ระบุ)</option>
-                            </select>
-                            <input type="number" id="distributeQty" placeholder="จำนวน (Set)" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
+    const subQty = sub ? sub.current_qty : 0;
+    const subElem = document.getElementById('subQtyDisplay');
+    const subCard = subElem?.closest('.bg-blue-50') || subElem?.parentElement?.parentElement;
 
-                        <!-- ✍️ ช่องกรอกเพิ่มเติม (จะแสดงเฉพาะเมื่อเลือก "อื่นๆ (ระบุ)") -->
-                        <input type="text" id="recipientOtherInput" placeholder="ระบุผู้รับเพิ่มเติม..." class="hidden w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                    </div>
+    if (subElem) subElem.innerText = subQty;
 
-                    <button id="btnDistribute" type="button" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition active:scale-95">
-                        บันทึกการแจกของ
-                    </button>
-                </div>
+    if (subCard) {
+        if (subQty <= MIN_SUB_STOCK) {
+            subCard.className = "bg-amber-100 border-2 border-amber-500 p-4 rounded-xl animate-pulse";
+            if (subElem) subElem.innerHTML = `${subQty} <span class="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">⚠️ สต๊อกย่อยใกล้หมด</span>`;
+        } else {
+            subCard.className = "bg-blue-50 border border-blue-100 p-4 rounded-xl";
+        }
+    }
+}
 
-                <!-- ↩️ ส่งคืนคลังใหญ่ -->
-                <div class="p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
-                    <h3 class="text-xs font-bold text-slate-700">↩️ ส่งคืนคลังใหญ่ (Return)</h3>
-                    <div class="space-y-2">
-                        <input type="number" id="returnQty" placeholder="จำนวนที่ส่งคืน" class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
-                        <button id="btnReturn" type="button" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition active:scale-95">
-                            ส่งคืนคลังใหญ่
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+// -------------------------------------------------------------
+// 🏢 4. ฟังก์ชันฝั่งคลังใหญ่ (Restock & Issue)
+// -------------------------------------------------------------
+document.getElementById('btnRestock')?.addEventListener('click', async () => {
+    const qtyInput = document.getElementById('restockQty');
+    const qty = parseInt(qtyInput.value);
 
-        <!-- ------------------------------------------------------------- -->
-        <!-- 4. บันทึกตรวจนับสต๊อกประจำเวร (Daily Stock Audit) -->
-        <!-- ------------------------------------------------------------- -->
-        <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-3">
-            <h3 class="text-base font-bold text-slate-800 border-b pb-2 flex items-center gap-2">
-                <span>📋 บันทึกตรวจนับสต๊อกประจำเวร (Daily Audit)</span>
-            </h3>
-            <p class="text-xs text-slate-500">ใช้นับยอดสินค้าจริงบนชั้นวาง เพื่อปรับยอดให้ตรงกับระบบทุกวัน</p>
-            
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <input type="number" id="actualCountQty" placeholder="จำนวนที่นับได้จริง (Set)" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
-                <input type="text" id="countNote" placeholder="หมายเหตุ (เช่น ปกติ / ของชำรุด 1 ชุด)" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
-                <button id="btnSaveDailyCount" type="button" class="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg text-sm transition active:scale-95">
-                    ยืนยันยอดตรวจนับ
-                </button>
-            </div>
-        </div>
+    if (!qty || qty <= 0) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่ต้องการเติมให้ถูกต้อง');
 
-        <!-- ------------------------------------------------------------- -->
-        <!-- 5. แผง Export Executive Report (เลือก Excel หรือ PDF) -->
-        <!-- ------------------------------------------------------------- -->
-        <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-4">
-            <div>
-                <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
-                    <span>📊 รายงานสรุปภาพรวมระบบ (Executive Report)</span>
-                </h3>
-                <p class="text-xs text-slate-500 mt-0.5">เลือกหัวข้อรายงานที่ต้องการ (เลือกได้มากกว่า 1 ข้อ) และช่วงวันที่ แล้วเลือกดาวน์โหลดไฟล์ Excel หรือ PDF</p>
-            </div>
+    const { error } = await supabase.rpc('restock_central', {
+        p_item_id: 1,
+        p_quantity: qty,
+        p_note: 'เติมของเข้าคลังใหญ่'
+    });
 
-            <!-- 🎯 Checkboxes เลือกหัวข้อรายงาน -->
-            <div class="pt-2 border-t space-y-2">
-                <label class="block text-xs font-semibold text-slate-700">📑 เลือกหัวข้อรายงานที่ต้องการดึงข้อมูล:</label>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                    <label class="flex items-center gap-2 p-2.5 bg-slate-50 border rounded-xl cursor-pointer hover:bg-slate-100 transition">
-                        <input type="checkbox" id="chkRestock" class="w-4 h-4 accent-emerald-600 rounded">
-                        <span class="text-xs font-medium text-slate-700">📦 1. เติมเข้าคลังใหญ่</span>
-                    </label>
-                    <label class="flex items-center gap-2 p-2.5 bg-slate-50 border rounded-xl cursor-pointer hover:bg-slate-100 transition">
-                        <input type="checkbox" id="chkTransfer" class="w-4 h-4 accent-emerald-600 rounded">
-                        <span class="text-xs font-medium text-slate-700">🔄 2. จ่าย-คืน คลังย่อย</span>
-                    </label>
-                    <label class="flex items-center gap-2 p-2.5 bg-slate-50 border rounded-xl cursor-pointer hover:bg-slate-100 transition">
-                        <input type="checkbox" id="chkDistribute" class="w-4 h-4 accent-emerald-600 rounded">
-                        <span class="text-xs font-medium text-slate-700">📝 3. ประวัติการแจกใช้งาน</span>
-                    </label>
-                    <label class="flex items-center gap-2 p-2.5 bg-slate-50 border rounded-xl cursor-pointer hover:bg-slate-100 transition">
-                        <input type="checkbox" id="chkAudit" class="w-4 h-4 accent-emerald-600 rounded">
-                        <span class="text-xs font-medium text-slate-700">📋 4. บันทึกตรวจนับประจำเวร</span>
-                    </label>
-                </div>
-            </div>
+    if (error) {
+        toastError('เติมของไม่สำเร็จ', error.message);
+    } else {
+        toastSuccess('เติมของสำเร็จ! 🎉', `เพิ่มสต๊อกเข้าคลังใหญ่เรียบร้อยแล้ว +${qty} Set`);
+        qtyInput.value = '';
+        await loadStockData();
+    }
+});
 
-            <!-- 📅 เลือกช่วงวันที่ + ปุ่มดาวน์โหลดคู่ (Excel & PDF) -->
-            <div class="flex flex-col sm:flex-row items-end gap-3 pt-2">
-                <div class="w-full sm:w-auto flex-1">
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">📅 วันที่เริ่มต้น</label>
-                    <input type="date" id="exportStartDate" class="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
-                </div>
-                <div class="w-full sm:w-auto flex-1">
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">📅 วันที่สิ้นสุด</label>
-                    <input type="date" id="exportEndDate" class="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
-                </div>
-                <div class="flex gap-2 w-full sm:w-auto">
-                    <button id="btnExportExcel" type="button" class="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition active:scale-95 whitespace-nowrap shadow-md flex items-center justify-center gap-1.5">
-                        <span>📥 ดาวน์โหลด Excel</span>
-                    </button>
-                    <button id="btnExportPDF" type="button" class="flex-1 sm:flex-none bg-rose-600 hover:bg-rose-700 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition active:scale-95 whitespace-nowrap shadow-md flex items-center justify-center gap-1.5">
-                        <span>📄 ดาวน์โหลด PDF</span>
-                    </button>
-                </div>
-            </div>
-        </div>
+document.getElementById('btnIssue')?.addEventListener('click', async () => {
+    const qtyInput = document.getElementById('issueQty');
+    const qty = parseInt(qtyInput.value);
 
-    </div>
+    if (!qty || qty <= 0) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่ต้องการจ่ายออก');
 
-    <!-- สคริปต์หลักควบคุมการทำงานระบบ Production -->
-    <script type="module" src="./js/app.js"></script>
-</body>
-</html>
+    const { error } = await supabase.rpc('issue_stock_to_sub', {
+        p_item_id: 1,
+        p_to_user_id: CURRENT_USER.id,
+        p_quantity: qty,
+        p_note: 'จ่ายของให้สต๊อกย่อย'
+    });
+
+    if (error) {
+        toastError('จ่ายของออกไม่สำเร็จ', error.message);
+    } else {
+        toastSuccess('จ่ายของออกสำเร็จ! ➡️', `ตัดสต๊อกคลังใหญ่เพื่อโอนให้คลังย่อย -${qty} Set เรียบร้อยแล้ว`);
+        qtyInput.value = '';
+        await loadStockData();
+    }
+});
+
+// -------------------------------------------------------------
+// 🩺 5. ฟังก์ชันฝั่งคลังย่อย (Distribute & Return)
+// -------------------------------------------------------------
+
+// 👁️ ควบคุมการเปิด/ปิด ช่องกรอกข้อความเมื่อเลือก "อื่นๆ (ระบุ)"
+document.getElementById('recipientSelect')?.addEventListener('change', (e) => {
+    const otherInput = document.getElementById('recipientOtherInput');
+    if (!otherInput) return;
+
+    if (e.target.value === 'OTHER') {
+        otherInput.classList.remove('hidden');
+        otherInput.focus();
+    } else {
+        otherInput.classList.add('hidden');
+        otherInput.value = '';
+    }
+});
+
+// 📝 ปุ่มบันทึกการแจกของ
+document.getElementById('btnDistribute')?.addEventListener('click', async () => {
+    const recipientSelect = document.getElementById('recipientSelect');
+    const recipientOtherInput = document.getElementById('recipientOtherInput');
+    const qtyInput = document.getElementById('distributeQty');
+    
+    const selectedValue = recipientSelect ? recipientSelect.value : '';
+    const otherText = recipientOtherInput ? recipientOtherInput.value.trim() : '';
+    const qty = parseInt(qtyInput ? qtyInput.value : '0');
+
+    let recipient = '';
+    if (selectedValue === 'OTHER') {
+        if (!otherText) {
+            return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุชื่อผู้รับในช่องอื่นๆ');
+        }
+        recipient = otherText;
+    } else {
+        recipient = selectedValue;
+    }
+
+    if (!recipient) return toastWarning('กรุณากรอกข้อมูล', 'โปรดเลือกผู้รับเวชภัณฑ์');
+    if (!qty || qty <= 0) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่ต้องการแจก');
+
+    const { error } = await supabase.rpc('distribute_item', {
+        p_item_id: 1,
+        p_recipient_info: recipient,
+        p_quantity: qty
+    });
+
+    if (error) {
+        toastError('บันทึกการแจกไม่สำเร็จ', error.message);
+    } else {
+        toastSuccess('ลงบันทึกสำเร็จ! 📝', `แจกของใช้งานให้ ${recipient} จำนวน ${qty} Set เรียบร้อยแล้ว`);
+        
+        if (recipientSelect) recipientSelect.value = '';
+        if (recipientOtherInput) {
+            recipientOtherInput.value = '';
+            recipientOtherInput.classList.add('hidden');
+        }
+        if (qtyInput) qtyInput.value = '';
+
+        await loadStockData();
+    }
+});
+
+document.getElementById('btnReturn')?.addEventListener('click', async () => {
+    const qtyInput = document.getElementById('returnQty');
+    const qty = parseInt(qtyInput.value);
+
+    if (!qty || qty <= 0) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่ต้องการส่งคืน');
+
+    const { error } = await supabase.rpc('return_stock_to_central', {
+        p_item_id: 1,
+        p_quantity: qty,
+        p_note: 'ส่งคืนคลังใหญ่'
+    });
+
+    if (error) {
+        toastError('ส่งคืนของไม่สำเร็จ', error.message);
+    } else {
+        toastSuccess('ส่งคืนคลังใหญ่สำเร็จ! ↩️', `ส่งคืนเวชภัณฑ์จำนวน ${qty} Set เข้าคลังใหญ่เรียบร้อยแล้ว`);
+        qtyInput.value = '';
+        await loadStockData();
+    }
+});
+
+// -------------------------------------------------------------
+// 📋 6. บันทึกตรวจนับสต๊อกประจำเวร (Daily Stock Audit)
+// -------------------------------------------------------------
+document.getElementById('btnSaveDailyCount')?.addEventListener('click', async () => {
+    const actualQtyInput = document.getElementById('actualCountQty');
+    const noteInput = document.getElementById('countNote');
+    const actualQty = parseInt(actualQtyInput.value);
+    const note = noteInput.value.trim() || 'ตรวจนับประจำเวรปกติ';
+
+    if (isNaN(actualQty) || actualQty < 0) {
+        return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่นับได้จริงบนชั้นวาง');
+    }
+
+    const confirmRes = await Swal.fire({
+        title: 'ยืนยันยอดตรวจนับ?',
+        text: `ต้องการปรับยอดคงเหลือระบบเป็น ${actualQty} Set หรือไม่?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#1E293B',
+        cancelButtonColor: '#94A3B8',
+        confirmButtonText: 'ยืนยันบันทึก',
+        cancelButtonText: 'ยกเลิก',
+        customClass: { popup: 'rounded-2xl' }
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
+    const { error } = await supabase.rpc('record_daily_count', {
+        p_actual_qty: actualQty,
+        p_note: note
+    });
+
+    if (error) {
+        toastError('บันทึกตรวจนับไม่สำเร็จ', error.message);
+    } else {
+        toastSuccess('ปรับยอดสต๊อกสำเร็จ! 📋', 'ปรับยอดคงเหลือจริงในระบบให้ตรงกับชั้นวางเรียบร้อยแล้ว');
+        actualQtyInput.value = '';
+        noteInput.value = '';
+        await loadStockData();
+    }
+});
+
+// -------------------------------------------------------------
+// 📊 7.1 Export Excel Report (ปรับขนาดคอลัมน์ Auto Width)
+// -------------------------------------------------------------
+document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
+    if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
+        return toastError('ปฏิเสธสิทธิ์การเข้าถึง', 'คุณไม่มีสิทธิ์ดาวน์โหลดรายงานภาพรวมระบบ');
+    }
+
+    const isRestockChecked = document.getElementById('chkRestock')?.checked;
+    const isTransferChecked = document.getElementById('chkTransfer')?.checked;
+    const isDistributeChecked = document.getElementById('chkDistribute')?.checked;
+    const isAuditChecked = document.getElementById('chkAudit')?.checked;
+
+    if (!isRestockChecked && !isTransferChecked && !isDistributeChecked && !isAuditChecked) {
+        return toastWarning('กรุณาเลือกหัวข้อ', 'โปรดเลือกหัวข้อรายงานอย่างน้อย 1 รายการ');
+    }
+
+    const startDate = document.getElementById('exportStartDate')?.value;
+    const endDate = document.getElementById('exportEndDate')?.value;
+
+    try {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
+        const userMap = {};
+        (profiles || []).forEach(p => {
+            userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
+        });
+
+        const workbook = XLSX.utils.book_new();
+
+        const createSheetWithWidth = (dataList) => {
+            const sheet = XLSX.utils.json_to_sheet(dataList.length ? dataList : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            if (dataList.length > 0) {
+                const colWidths = [];
+                Object.keys(dataList[0]).forEach(key => {
+                    let maxLen = key.toString().length;
+                    dataList.forEach(row => {
+                        const val = row[key] ? row[key].toString() : '';
+                        if (val.length > maxLen) maxLen = val.length;
+                    });
+                    colWidths.push({ wch: Math.max(maxLen + 5, 18) });
+                });
+                sheet['!cols'] = colWidths;
+            }
+            return sheet;
+        };
+
+        // 🟢 1. เติมเข้าคลังใหญ่
+        if (isRestockChecked) {
+            let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: restockList } = await query;
+            const filteredRestock = (restockList || []).filter(t => {
+                const note = t.note || '';
+                return !note.includes('ปรับยอดจากการนับ') && !note.includes('Diff:');
+            });
+
+            const restockData = filteredRestock.map(t => ({
+                'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
+                'ประเภท': 'เติมเข้าคลังใหญ่',
+                'ผู้ดำเนินการ': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ระบบ / Admin'),
+                'จำนวน (Set)': t.quantity,
+                'หมายเหตุ / เลขที่อ้างอิง': t.note || '-'
+            }));
+            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(restockData), "1. เติมเข้าคลังใหญ่");
+        }
+
+        // 🔵 2. จ่าย-คืน คลังย่อย
+        if (isTransferChecked) {
+            let query = supabase.from('stock_transactions').select('*').in('type', ['ISSUE', 'RETURN']).order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: transferList } = await query;
+            const transferData = (transferList || []).map(t => ({
+                'วันที่-เวลา': new Date(t.created_at).toLocaleString('th-TH'),
+                'การดำเนินการ': t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
+                'ผู้รับ/ผู้ส่งคืน': t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ'),
+                'จำนวน (Set)': t.quantity,
+                'หมายเหตุ': t.note || '-'
+            }));
+            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(transferData), "2. จ่าย-คืน คลังย่อย");
+        }
+
+        // 🟡 3. ประวัติการแจกใช้งาน
+        if (isDistributeChecked) {
+            let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: distList } = await query;
+            const distributeData = (distList || []).map(d => {
+                const rawRecipient = d.recipient_info || d.note || '-';
+                const cleanRecipient = rawRecipient.replace(/^แจกให้:\s*/, '');
+                return {
+                    'วันที่-เวลา': new Date(d.created_at).toLocaleString('th-TH'),
+                    'ผู้แจก (Staff)': d.distributor_id ? userMap[d.distributor_id] : (d.from_user_id ? userMap[d.from_user_id] : 'ผู้ใช้งานระบบ'),
+                    'ผู้รับ': cleanRecipient,
+                    'จำนวนที่แจก (Set)': d.quantity
+                };
+            });
+            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(distributeData), "3. ประวัติการแจกใช้งาน");
+        }
+
+        // 📋 4. บันทึกตรวจนับประจำเวร
+        if (isAuditChecked) {
+            let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: auditList } = await query;
+            const auditData = (auditList || []).map(a => {
+                const userId = a.counted_by || a.recorder_id || a.created_by;
+                const staffName = userId && userMap[userId] ? userMap[userId] : 'ผู้ใช้งานระบบ';
+
+                return {
+                    'วันที่-เวลา ตรวจนับ': new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
+                    'ผู้ตรวจนับ (Staff)': staffName,
+                    'จำนวนที่นับได้จริง (Set)': a.actual_qty ?? a.quantity ?? 0,
+                    'หมายเหตุ': a.note || '-'
+                };
+            });
+            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(auditData), "4. สรุปยอดนับประจำเวร");
+        }
+
+        const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(workbook, `D-Stock_ER_Report_${dateStr}.xlsx`);
+        
+        toastSuccess('ส่งออก Excel สำเร็จ 📥', 'ดาวน์โหลดไฟล์ Excel สรุปข้อมูลเรียบร้อยแล้ว');
+
+    } catch (err) {
+        console.error('Export Excel Error:', err);
+        toastError('เกิดข้อผิดพลาดในการดึงรายงาน', err.message);
+    }
+});
+
+// -------------------------------------------------------------
+// 📄 7.2 Export PDF Executive Report (แก้ไข VFS Font Error เรียบร้อย)
+// -------------------------------------------------------------
+document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
+    if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
+        return toastError('ปฏิเสธสิทธิ์การเข้าถึง', 'คุณไม่มีสิทธิ์ดาวน์โหลดรายงานภาพรวมระบบ');
+    }
+
+    const isRestockChecked = document.getElementById('chkRestock')?.checked;
+    const isTransferChecked = document.getElementById('chkTransfer')?.checked;
+    const isDistributeChecked = document.getElementById('chkDistribute')?.checked;
+    const isAuditChecked = document.getElementById('chkAudit')?.checked;
+
+    if (!isRestockChecked && !isTransferChecked && !isDistributeChecked && !isAuditChecked) {
+        return toastWarning('กรุณาเลือกหัวข้อ', 'โปรดเลือกหัวข้อรายงานอย่างน้อย 1 รายการ');
+    }
+
+    const startDate = document.getElementById('exportStartDate')?.value;
+    const endDate = document.getElementById('exportEndDate')?.value;
+
+    try {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
+        const userMap = {};
+        (profiles || []).forEach(p => {
+            userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
+        });
+
+        if (typeof pdfMake === 'undefined') {
+            return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบการดาวน์โหลด CDN ของ pdfMake ในหน้าเว็บ');
+        }
+
+        // 🇹🇭 แก้ไขการตั้งค่าฟอนต์ชี้ไปที่ THSarabunNew.ttf เพื่อป้องกัน Error
+        pdfMake.fonts = {
+            THSarabunNew: {
+                normal: 'THSarabunNew.ttf',
+                bold: 'THSarabunNew.ttf',
+                italics: 'THSarabunNew.ttf',
+                bolditalics: 'THSarabunNew.ttf'
+            }
+        };
+
+        const docContent = [];
+        let isFirstPage = true;
+
+        const buildSection = (titleText, headers, rowsData) => {
+            if (!isFirstPage) {
+                docContent.push({ text: '', pageBreak: 'before' });
+            }
+            isFirstPage = false;
+
+            docContent.push({ text: `รายงาน D-Stock ER: ${titleText}`, style: 'header' });
+            docContent.push({ 
+                text: `ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Admin'}`, 
+                style: 'subheader' 
+            });
+
+            const tableBody = [
+                headers.map(h => ({ text: h, style: 'tableHeader' }))
+            ];
+
+            if (rowsData.length > 0) {
+                rowsData.forEach(row => tableBody.push(row));
+            } else {
+                tableBody.push([{ text: 'ไม่มีข้อมูล', colSpan: headers.length, alignment: 'center', color: '#888888' }, ...Array(headers.length - 1).fill('')]);
+            }
+
+            docContent.push({
+                table: {
+                    headerRows: 1,
+                    widths: headers.map(() => '*'),
+                    body: tableBody
+                },
+                layout: {
+                    fillColor: function (rowIndex) {
+                        return (rowIndex === 0) ? '#1E293B' : (rowIndex % 2 === 0 ? '#F8FAFC' : null);
+                    },
+                    hLineWidth: () => 0.5,
+                    vLineWidth: () => 0.5,
+                    hLineColor: () => '#CBD5E1',
+                    vLineColor: () => '#CBD5E1'
+                },
+                margin: [0, 8, 0, 15]
+            });
+        };
+
+        // 🟢 1. เติมเข้าคลังใหญ่
+        if (isRestockChecked) {
+            let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: list } = await query;
+            const filtered = (list || []).filter(t => !(t.note || '').includes('ปรับยอดจากการนับ') && !(t.note || '').includes('Diff:'));
+            const rows = filtered.map(t => [
+                new Date(t.created_at).toLocaleString('th-TH'),
+                t.to_user_id ? userMap[t.to_user_id] : 'ระบบ / Admin',
+                `${t.quantity} Set`,
+                t.note || '-'
+            ]);
+            buildSection("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows);
+        }
+
+        // 🔵 2. จ่าย-คืน คลังย่อย
+        if (isTransferChecked) {
+            let query = supabase.from('stock_transactions').select('*').in('type', ['ISSUE', 'RETURN']).order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: list } = await query;
+            const rows = (list || []).map(t => [
+                new Date(t.created_at).toLocaleString('th-TH'),
+                t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
+                t.to_user_id ? userMap[t.to_user_id] : 'ผู้ใช้งานระบบ',
+                `${t.quantity} Set`
+            ]);
+            buildSection("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows);
+        }
+
+        // 🟡 3. ประวัติการแจกใช้งาน
+        if (isDistributeChecked) {
+            let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: list } = await query;
+            const rows = (list || []).map(d => [
+                new Date(d.created_at).toLocaleString('th-TH'),
+                d.distributor_id ? userMap[d.distributor_id] : 'ผู้ใช้งานระบบ',
+                (d.recipient_info || d.note || '-').replace(/^แจกให้:\s*/, ''),
+                `${d.quantity} Set`
+            ]);
+            buildSection("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows);
+        }
+
+        // 📋 4. บันทึกตรวจนับประจำเวร
+        if (isAuditChecked) {
+            let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
+            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+            const { data: list } = await query;
+            const rows = (list || []).map(a => [
+                new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
+                a.counted_by ? userMap[a.counted_by] : 'ผู้ใช้งานระบบ',
+                `${a.actual_qty ?? 0} Set`,
+                a.note || '-'
+            ]);
+            buildSection("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'หมายเหตุ'], rows);
+        }
+
+        const docDefinition = {
+            content: docContent,
+            defaultStyle: {
+                font: 'THSarabunNew',
+                fontSize: 14
+            },
+            styles: {
+                header: {
+                    fontSize: 20,
+                    margin: [0, 0, 0, 4]
+                },
+                subheader: {
+                    fontSize: 12,
+                    color: '#475569',
+                    margin: [0, 0, 0, 10]
+                },
+                tableHeader: {
+                    fontSize: 14,
+                    color: '#FFFFFF',
+                    alignment: 'center'
+                }
+            }
+        };
+
+        const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
+        pdfMake.createPdf(docDefinition).download(`D-Stock_ER_Report_${dateStr}.pdf`);
+        
+        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF ภาษาไทยเรียบร้อยแล้ว');
+
+    } catch (err) {
+        console.error('Export PDF Error:', err);
+        toastError('เกิดข้อผิดพลาดในการสร้าง PDF', err.message);
+    }
+});
+
+// -------------------------------------------------------------
+// 🚪 8. ปุ่ม Logout
+// -------------------------------------------------------------
+document.getElementById('btnLogout')?.addEventListener('click', async () => {
+    const confirmRes = await Swal.fire({
+        title: 'ยืนยันออกจากระบบ?',
+        text: 'คุณต้องการออกจากระบบ D-Stock ER ใช่หรือไม่',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#EF4444',
+        cancelButtonColor: '#94A3B8',
+        confirmButtonText: 'ออกจากระบบ',
+        cancelButtonText: 'ยกเลิก',
+        customClass: { popup: 'rounded-2xl' }
+    });
+
+    if (confirmRes.isConfirmed) {
+        await supabase.auth.signOut();
+        window.location.href = './index.html';
+    }
+});
+
+initProductionUser();
