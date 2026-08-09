@@ -219,44 +219,16 @@ document.getElementById('btnIssue')?.addEventListener('click', async () => {
 // -------------------------------------------------------------
 // 🩺 5. ฟังก์ชันฝั่งคลังย่อย (Distribute & Return)
 // -------------------------------------------------------------
-
-// 👁️ ควบคุมการเปิด/ปิด ช่องกรอกข้อความเมื่อเลือก "อื่นๆ (ระบุ)"
-document.getElementById('recipientSelect')?.addEventListener('change', (e) => {
-    const otherInput = document.getElementById('recipientOtherInput');
-    if (!otherInput) return;
-
-    if (e.target.value === 'OTHER') {
-        otherInput.classList.remove('hidden');
-        otherInput.focus();
-    } else {
-        otherInput.classList.add('hidden');
-        otherInput.value = '';
-    }
-});
-
-// 📝 ปุ่มบันทึกการแจกของ
 document.getElementById('btnDistribute')?.addEventListener('click', async () => {
-    const recipientSelect = document.getElementById('recipientSelect');
-    const recipientOtherInput = document.getElementById('recipientOtherInput');
+    const recipientInput = document.getElementById('recipientInfo');
     const qtyInput = document.getElementById('distributeQty');
-    
-    const selectedValue = recipientSelect ? recipientSelect.value : '';
-    const otherText = recipientOtherInput ? recipientOtherInput.value.trim() : '';
-    const qty = parseInt(qtyInput ? qtyInput.value : '0');
+    const recipient = recipientInput.value.trim();
+    const qty = parseInt(qtyInput.value);
 
-    let recipient = '';
-    if (selectedValue === 'OTHER') {
-        if (!otherText) {
-            return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุชื่อผู้รับในช่องอื่นๆ');
-        }
-        recipient = otherText;
-    } else {
-        recipient = selectedValue;
-    }
-
-    if (!recipient) return toastWarning('กรุณากรอกข้อมูล', 'โปรดเลือกผู้รับเวชภัณฑ์');
+    if (!recipient) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุผู้รับ / เลข HN / จุดงาน');
     if (!qty || qty <= 0) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่ต้องการแจก');
 
+    // 💡 ส่งค่าชื่อผู้รับเข้าฐานข้อมูลตรงๆ โดยยกเลิกคำว่า "แจกให้: "
     const { error } = await supabase.rpc('distribute_item', {
         p_item_id: 1,
         p_recipient_info: recipient,
@@ -267,14 +239,8 @@ document.getElementById('btnDistribute')?.addEventListener('click', async () => 
         toastError('บันทึกการแจกไม่สำเร็จ', error.message);
     } else {
         toastSuccess('ลงบันทึกสำเร็จ! 📝', `แจกของใช้งานให้ ${recipient} จำนวน ${qty} Set เรียบร้อยแล้ว`);
-        
-        if (recipientSelect) recipientSelect.value = '';
-        if (recipientOtherInput) {
-            recipientOtherInput.value = '';
-            recipientOtherInput.classList.add('hidden');
-        }
-        if (qtyInput) qtyInput.value = '';
-
+        recipientInput.value = '';
+        qtyInput.value = '';
         await loadStockData();
     }
 });
@@ -343,7 +309,7 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
 });
 
 // -------------------------------------------------------------
-// 📊 7.1 Export Excel Report (ปรับขนาดคอลัมน์ Auto Width)
+// 📊 7. Export Executive Report (อ่านค่าจาก Checkbox)
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -363,6 +329,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
     const endDate = document.getElementById('exportEndDate')?.value;
 
     try {
+        // ดึงรายชื่อ Profile มาแปะชื่อผู้ใช้งาน
         const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
         const userMap = {};
         (profiles || []).forEach(p => {
@@ -371,30 +338,15 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 
         const workbook = XLSX.utils.book_new();
 
-        const createSheetWithWidth = (dataList) => {
-            const sheet = XLSX.utils.json_to_sheet(dataList.length ? dataList : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
-            if (dataList.length > 0) {
-                const colWidths = [];
-                Object.keys(dataList[0]).forEach(key => {
-                    let maxLen = key.toString().length;
-                    dataList.forEach(row => {
-                        const val = row[key] ? row[key].toString() : '';
-                        if (val.length > maxLen) maxLen = val.length;
-                    });
-                    colWidths.push({ wch: Math.max(maxLen + 5, 18) });
-                });
-                sheet['!cols'] = colWidths;
-            }
-            return sheet;
-        };
-
-        // 🟢 1. เติมเข้าคลังใหญ่
+        // 🟢 1. เติมเข้าคลังใหญ่ (RESTOCK - ตัดรายการปรับยอดจากการนับประจำเวรออก)
         if (isRestockChecked) {
             let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
             if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
 
             const { data: restockList } = await query;
+
+            // ✂️ กรองเฉพาะการเติมสต๊อกจริง ตัดรายการที่เป็นการปรับยอดจากการนับออก
             const filteredRestock = (restockList || []).filter(t => {
                 const note = t.note || '';
                 return !note.includes('ปรับยอดจากการนับ') && !note.includes('Diff:');
@@ -407,10 +359,11 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ / เลขที่อ้างอิง': t.note || '-'
             }));
-            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(restockData), "1. เติมเข้าคลังใหญ่");
+            const sheet = XLSX.utils.json_to_sheet(restockData.length ? restockData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            XLSX.utils.book_append_sheet(workbook, sheet, "1. เติมเข้าคลังใหญ่");
         }
 
-        // 🔵 2. จ่าย-คืน คลังย่อย
+        // 🔵 2. จ่าย-คืน คลังย่อย (ISSUE & RETURN)
         if (isTransferChecked) {
             let query = supabase.from('stock_transactions').select('*').in('type', ['ISSUE', 'RETURN']).order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -424,10 +377,11 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                 'จำนวน (Set)': t.quantity,
                 'หมายเหตุ': t.note || '-'
             }));
-            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(transferData), "2. จ่าย-คืน คลังย่อย");
+            const sheet = XLSX.utils.json_to_sheet(transferData.length ? transferData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            XLSX.utils.book_append_sheet(workbook, sheet, "2. จ่าย-คืน คลังย่อย");
         }
 
-        // 🟡 3. ประวัติการแจกใช้งาน
+        // 🟡 3. ประวัติการแจกใช้งาน (DISTRIBUTE)
         if (isDistributeChecked) {
             let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -444,10 +398,11 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                     'จำนวนที่แจก (Set)': d.quantity
                 };
             });
-            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(distributeData), "3. ประวัติการแจกใช้งาน");
+            const sheet = XLSX.utils.json_to_sheet(distributeData.length ? distributeData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            XLSX.utils.book_append_sheet(workbook, sheet, "3. ประวัติการแจกใช้งาน");
         }
 
-        // 📋 4. บันทึกตรวจนับประจำเวร
+        // 📋 4. บันทึกตรวจนับประจำเวร (DAILY AUDIT - ดึงคอลัมน์ counted_by โดยตรง)
         if (isAuditChecked) {
             let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -465,194 +420,21 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                     'หมายเหตุ': a.note || '-'
                 };
             });
-            XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(auditData), "4. สรุปยอดนับประจำเวร");
+            const sheet = XLSX.utils.json_to_sheet(auditData.length ? auditData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
+            XLSX.utils.book_append_sheet(workbook, sheet, "4. สรุปยอดนับประจำเวร");
         }
 
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
         XLSX.writeFile(workbook, `D-Stock_ER_Report_${dateStr}.xlsx`);
         
-        toastSuccess('ส่งออก Excel สำเร็จ 📥', 'ดาวน์โหลดไฟล์ Excel สรุปข้อมูลเรียบร้อยแล้ว');
+        toastSuccess('ส่งออกรายงานสำเร็จ 📥', 'ดาวน์โหลดไฟล์ Excel สรุปข้อมูลหัวข้อที่เลือกเรียบร้อยแล้ว');
 
     } catch (err) {
-        console.error('Export Excel Error:', err);
+        console.error('Export Error:', err);
         toastError('เกิดข้อผิดพลาดในการดึงรายงาน', err.message);
     }
 });
 
-// -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (ชิดขอบบนสุด ไม่เหลือพื้นที่ว่าง)
-// -------------------------------------------------------------
-document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
-    if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
-        return toastError('ปฏิเสธสิทธิ์การเข้าถึง', 'คุณไม่มีสิทธิ์ดาวน์โหลดรายงานภาพรวมระบบ');
-    }
-
-    const isRestockChecked = document.getElementById('chkRestock')?.checked;
-    const isTransferChecked = document.getElementById('chkTransfer')?.checked;
-    const isDistributeChecked = document.getElementById('chkDistribute')?.checked;
-    const isAuditChecked = document.getElementById('chkAudit')?.checked;
-
-    if (!isRestockChecked && !isTransferChecked && !isDistributeChecked && !isAuditChecked) {
-        return toastWarning('กรุณาเลือกหัวข้อ', 'โปรดเลือกหัวข้อรายงานอย่างน้อย 1 รายการ');
-    }
-
-    const startDate = document.getElementById('exportStartDate')?.value;
-    const endDate = document.getElementById('exportEndDate')?.value;
-
-    try {
-        const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
-        const userMap = {};
-        (profiles || []).forEach(p => {
-            userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
-        });
-
-        if (typeof html2pdf === 'undefined') {
-            return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบ CDN ของ html2pdf ในหน้าเว็บ');
-        }
-
-        // 🏗️ คอนเทนเนอร์ชั่วคราว (ลบ Margin & Padding ทั้งหมดให้ชิดขอบบนสุด)
-        const printContainer = document.createElement('div');
-        printContainer.style.fontFamily = "'THSarabunNew', 'Prompt', sans-serif";
-        printContainer.style.color = "#1e293b";
-        printContainer.style.backgroundColor = "#ffffff";
-        printContainer.style.margin = "0";
-        printContainer.style.padding = "0";
-
-        let isFirstPage = true;
-
-        const buildTableHTML = (titleText, headers, rowsData) => {
-            // 🎯 กำหนดให้ชิดขอบบนสุดโดยไม่มี padding หรือ margin รบกวน
-            const pageBreakStyle = !isFirstPage 
-                ? 'style="page-break-before: always; margin-top: 0 !important; padding-top: 0 !important;"' 
-                : 'style="margin-top: 0 !important; padding-top: 0 !important;"';
-            isFirstPage = false;
-
-            let rowsHTML = '';
-            if (rowsData.length > 0) {
-                rowsData.forEach(row => {
-                    rowsHTML += `<tr style="border-bottom: 1px solid #cbd5e1;">`;
-                    row.forEach(cell => {
-                        rowsHTML += `<td style="padding: 4px 8px; font-size: 15px;">${cell}</td>`;
-                    });
-                    rowsHTML += `</tr>`;
-                });
-            } else {
-                rowsHTML = `<tr><td colspan="${headers.length}" style="text-align: center; padding: 8px; font-size: 15px; color: #64748b;">ไม่มีข้อมูล</td></tr>`;
-            }
-
-            let headerHTML = '';
-            headers.forEach(h => {
-                headerHTML += `<th style="padding: 6px 8px; font-size: 16px; font-weight: bold; text-align: left; background-color: #1e293b; color: #ffffff;">${h}</th>`;
-            });
-
-            return `
-                <div class="pdf-section" ${pageBreakStyle}>
-                    <div style="margin-top: 0; margin-bottom: 6px; border-bottom: 2px solid #0284c7; padding-bottom: 4px;">
-                        <h2 style="font-size: 20px; font-weight: bold; margin: 0; padding: 0; color: #0f172a; line-height: 1.2;">รายงาน D-Stock ER: ${titleText}</h2>
-                        <p style="font-size: 13px; color: #475569; margin: 2px 0 0 0; padding: 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Admin'}</p>
-                    </div>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
-                        <thead>
-                            <tr>${headerHTML}</tr>
-                        </thead>
-                        <tbody>
-                            ${rowsHTML}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        };
-
-        let fullHTML = '';
-
-        // 🟢 1. เติมเข้าคลังใหญ่
-        if (isRestockChecked) {
-            let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
-            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
-
-            const { data: list } = await query;
-            const filtered = (list || []).filter(t => !(t.note || '').includes('ปรับยอดจากการนับ') && !(t.note || '').includes('Diff:'));
-            const rows = filtered.map(t => [
-                new Date(t.created_at).toLocaleString('th-TH'),
-                t.to_user_id ? userMap[t.to_user_id] : 'ระบบ / Admin',
-                `${t.quantity} Set`,
-                t.note || '-'
-            ]);
-            fullHTML += buildTableHTML("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows);
-        }
-
-        // 🔵 2. จ่าย-คืน คลังย่อย
-        if (isTransferChecked) {
-            let query = supabase.from('stock_transactions').select('*').in('type', ['ISSUE', 'RETURN']).order('created_at', { ascending: false });
-            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
-
-            const { data: list } = await query;
-            const rows = (list || []).map(t => [
-                new Date(t.created_at).toLocaleString('th-TH'),
-                t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
-                t.to_user_id ? userMap[t.to_user_id] : 'ผู้ใช้งานระบบ',
-                `${t.quantity} Set`
-            ]);
-            fullHTML += buildTableHTML("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows);
-        }
-
-        // 🟡 3. ประวัติการแจกใช้งาน
-        if (isDistributeChecked) {
-            let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
-            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
-
-            const { data: list } = await query;
-            const rows = (list || []).map(d => [
-                new Date(d.created_at).toLocaleString('th-TH'),
-                d.distributor_id ? userMap[d.distributor_id] : 'ผู้ใช้งานระบบ',
-                (d.recipient_info || d.note || '-').replace(/^แจกให้:\s*/, ''),
-                `${d.quantity} Set`
-            ]);
-            fullHTML += buildTableHTML("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows);
-        }
-
-        // 📋 4. บันทึกตรวจนับประจำเวร
-        if (isAuditChecked) {
-            let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
-            if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-            if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
-
-            const { data: list } = await query;
-            const rows = (list || []).map(a => [
-                new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
-                a.counted_by ? userMap[a.counted_by] : 'ผู้ใช้งานระบบ',
-                `${a.actual_qty ?? 0} Set`,
-                a.note || '-'
-            ]);
-            fullHTML += buildTableHTML("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'หมายเหตุ'], rows);
-        }
-
-        printContainer.innerHTML = fullHTML;
-
-        const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
-        
-        // 🎯 บังคับตั้งค่า Margin [บน, ซ้าย, ล่าง, ขวา] ชิดขอบบนสุดที่ 2mm
-        const opt = {
-            margin:       [2, 6, 6, 6],
-            filename:     `D-Stock_ER_Report_${dateStr}.pdf`,
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak:    { mode: ['css', 'legacy'] }
-        };
-
-        await html2pdf().set(opt).from(printContainer).save();
-        
-        toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF เรียบร้อยแล้ว');
-
-    } catch (err) {
-        console.error('Export PDF Error:', err);
-        toastError('เกิดข้อผิดพลาดในการสร้าง PDF', err.message);
-    }
-});
 // -------------------------------------------------------------
 // 🚪 8. ปุ่ม Logout
 // -------------------------------------------------------------
