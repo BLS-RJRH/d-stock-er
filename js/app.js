@@ -82,8 +82,13 @@ async function initProductionUser() {
             badgeElem.innerText = roleNames[profile.role] || profile.role;
         }
 
+        setupTabsNav();
         setupUIByRole(profile.role);
         await loadStockData();
+        
+        if (profile.role === 'SUPER_ADMIN' || profile.role === 'ADMIN') {
+            await loadActivityLogs();
+        }
 
     } catch (err) {
         console.error('Init Production Error:', err);
@@ -92,32 +97,70 @@ async function initProductionUser() {
 }
 
 // -------------------------------------------------------------
-// 🎨 2. ควบคุมการแสดงผล UI
+// 🧭 1.5 ระบบสลับหน้าเมนู (Tab Switching System)
+// -------------------------------------------------------------
+function setupTabsNav() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetTabId = btn.getAttribute('data-tab');
+
+            // เปลี่ยน Style ปุ่มสลับ
+            tabBtns.forEach(b => {
+                b.className = "tab-btn flex-1 min-w-[120px] py-2.5 px-3 rounded-xl text-xs md:text-sm font-semibold transition flex items-center justify-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200";
+            });
+            btn.className = "tab-btn flex-1 min-w-[120px] py-2.5 px-3 rounded-xl text-xs md:text-sm font-semibold transition flex items-center justify-center gap-1.5 bg-slate-800 text-white shadow-sm";
+
+            // สลับการแสดงผล Container
+            tabContents.forEach(content => {
+                if (content.id === targetTabId) {
+                    content.classList.remove('hidden');
+                } else {
+                    content.classList.add('hidden');
+                }
+            });
+        });
+    });
+}
+
+// -------------------------------------------------------------
+// 🎨 2. ควบคุมการแสดงผล UI ตามสิทธิ์ใช้งาน
 // -------------------------------------------------------------
 function setupUIByRole(role) {
-    const centralPanel = document.getElementById('centralPanel');
-    const subPanel = document.getElementById('subPanel');
-    const exportSection = document.getElementById('btnExportExcel')?.closest('div.bg-white');
     const btnManageStaff = document.getElementById('btnManageStaff');
-
+    const navTabsContainer = document.getElementById('navTabsContainer');
+    
+    // ปุ่มจัดการ Staff
     if (role === 'SUPER_ADMIN') {
         btnManageStaff?.classList.remove('hidden');
     } else {
         btnManageStaff?.classList.add('hidden');
     }
 
-    if (role === 'SUPER_ADMIN' || role === 'ADMIN') {
-        centralPanel?.classList.remove('hidden');
-        subPanel?.classList.remove('hidden');
-        exportSection?.classList.remove('hidden');
-    } else if (role === 'CENTER_STAFF') {
-        centralPanel?.classList.remove('hidden');
-        subPanel?.classList.add('hidden');
-        exportSection?.classList.add('hidden');
+    // ซ่อน/แสดง เมนูด้านบนตามบทบาท
+    const tabCentralBtn = document.querySelector('[data-tab="tabCentral"]');
+    const tabSubBtn = document.querySelector('[data-tab="tabSub"]');
+    const tabLogBtn = document.querySelector('[data-tab="tabLog"]');
+    const tabExportBtn = document.querySelector('[data-tab="tabExport"]');
+
+    if (role === 'CENTER_STAFF') {
+        tabSubBtn?.classList.add('hidden');
+        tabLogBtn?.classList.add('hidden');
+        tabExportBtn?.classList.add('hidden');
+        tabCentralBtn?.click();
     } else if (role === 'SUB_STAFF') {
-        centralPanel?.classList.add('hidden');
-        subPanel?.classList.remove('hidden');
-        exportSection?.classList.add('hidden');
+        tabCentralBtn?.classList.add('hidden');
+        tabLogBtn?.classList.add('hidden');
+        tabExportBtn?.classList.add('hidden');
+        tabSubBtn?.click();
+    } else {
+        // ADMIN / SUPER_ADMIN เห็นทุกเมนู
+        tabCentralBtn?.classList.remove('hidden');
+        tabSubBtn?.classList.remove('hidden');
+        tabLogBtn?.classList.remove('hidden');
+        tabExportBtn?.classList.remove('hidden');
     }
 }
 
@@ -171,6 +214,102 @@ async function loadStockData() {
 }
 
 // -------------------------------------------------------------
+// 📜 3.5 ดึงข้อมูล Activity Log มาแสดงผลบนหน้าเว็บเรียลไทม์
+// -------------------------------------------------------------
+async function loadActivityLogs() {
+    const tableBody = document.getElementById('activityLogTableBody');
+    if (!tableBody) return;
+
+    try {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
+        const userMap = {};
+        (profiles || []).forEach(p => {
+            userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
+        });
+
+        const { data: txList } = await supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(15);
+        const { data: distList } = await supabase.from('distribution_logs').select('*').order('created_at', { ascending: false }).limit(15);
+        const { data: auditList } = await supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false }).limit(15);
+
+        const combinedLogs = [];
+
+        (txList || []).forEach(t => {
+            let badge = '';
+            let actionText = '';
+            if (t.type === 'RESTOCK') {
+                if ((t.note || '').includes('ปรับยอดจากการนับ')) return;
+                badge = `<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold">➕ เติมคลังใหญ่</span>`;
+                actionText = t.note || 'เติมสต๊อกคลังใหญ่';
+            } else if (t.type === 'ISSUE') {
+                badge = `<span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-semibold">➡️ จ่ายให้คลังย่อย</span>`;
+                actionText = t.note || 'โอนย้ายไปคลังย่อย EMS';
+            } else if (t.type === 'RETURN') {
+                badge = `<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">↩️ ส่งคืนคลังใหญ่</span>`;
+                actionText = t.note || 'คืนเวชภัณฑ์เข้าคลังใหญ่';
+            }
+
+            combinedLogs.push({
+                created_at: new Date(t.created_at),
+                badge: badge,
+                user: t.to_user_id ? userMap[t.to_user_id] : (t.from_user_id ? userMap[t.from_user_id] : 'ระบบ / Admin'),
+                qty: `${t.quantity} Set`,
+                detail: actionText
+            });
+        });
+
+        (distList || []).forEach(d => {
+            const rawRecipient = d.recipient_info || d.note || '-';
+            const cleanRecipient = rawRecipient.replace(/^แจกให้:\s*/, '');
+            combinedLogs.push({
+                created_at: new Date(d.created_at),
+                badge: `<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-semibold">📝 แจกใช้งาน</span>`,
+                user: d.distributor_id ? userMap[d.distributor_id] : 'ผู้ใช้งานระบบ',
+                qty: `${d.quantity} Set`,
+                detail: `แจกให้: ${cleanRecipient}`
+            });
+        });
+
+        (auditList || []).forEach(a => {
+            const userId = a.counted_by || a.recorder_id || a.created_by;
+            combinedLogs.push({
+                created_at: new Date(a.created_at || a.count_date),
+                badge: `<span class="bg-slate-100 text-slate-800 px-2 py-0.5 rounded-full font-semibold">📋 ตรวจนับประจำเวร</span>`,
+                user: userId && userMap[userId] ? userMap[userId] : 'ผู้ใช้งานระบบ',
+                qty: `${a.actual_qty ?? a.quantity ?? 0} Set`,
+                detail: a.note || 'นับยอดจริงบนชั้นวาง'
+            });
+        });
+
+        combinedLogs.sort((a, b) => b.created_at - a.created_at);
+        const top20Logs = combinedLogs.slice(0, 20);
+
+        if (top20Logs.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">ยังไม่มีประวัติกิจกรรมในระบบ</td></tr>`;
+            return;
+        }
+
+        let html = '';
+        top20Logs.forEach(log => {
+            html += `
+                <tr class="hover:bg-slate-50 transition">
+                    <td class="p-2.5 whitespace-nowrap text-slate-500">${log.created_at.toLocaleString('th-TH')}</td>
+                    <td class="p-2.5 whitespace-nowrap">${log.badge}</td>
+                    <td class="p-2.5 font-medium whitespace-nowrap">${log.user}</td>
+                    <td class="p-2.5 text-center font-bold text-slate-800 whitespace-nowrap">${log.qty}</td>
+                    <td class="p-2.5 text-slate-600">${log.detail}</td>
+                </tr>
+            `;
+        });
+
+        tableBody.innerHTML = html;
+
+    } catch (err) {
+        console.error('Load Activity Logs Error:', err);
+        tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
+    }
+}
+
+// -------------------------------------------------------------
 // 🏢 4. ฟังก์ชันฝั่งคลังใหญ่ (Restock & Issue)
 // -------------------------------------------------------------
 document.getElementById('btnRestock')?.addEventListener('click', async () => {
@@ -191,6 +330,7 @@ document.getElementById('btnRestock')?.addEventListener('click', async () => {
         toastSuccess('เติมของสำเร็จ! 🎉', `เพิ่มสต๊อกเข้าคลังใหญ่เรียบร้อยแล้ว +${qty} Set`);
         qtyInput.value = '';
         await loadStockData();
+        await loadActivityLogs();
     }
 });
 
@@ -213,14 +353,13 @@ document.getElementById('btnIssue')?.addEventListener('click', async () => {
         toastSuccess('จ่ายของออกสำเร็จ! ➡️', `ตัดสต๊อกคลังใหญ่เพื่อโอนให้คลังย่อย -${qty} Set เรียบร้อยแล้ว`);
         qtyInput.value = '';
         await loadStockData();
+        await loadActivityLogs();
     }
 });
 
 // -------------------------------------------------------------
 // 🩺 5. ฟังก์ชันฝั่งคลังย่อย (Distribute & Return)
 // -------------------------------------------------------------
-
-// 👁️ ควบคุมการเปิด/ปิด ช่องกรอกข้อความเมื่อเลือก "อื่นๆ (ระบุ)"
 document.getElementById('recipientSelect')?.addEventListener('change', (e) => {
     const otherInput = document.getElementById('recipientOtherInput');
     if (!otherInput) return;
@@ -234,7 +373,6 @@ document.getElementById('recipientSelect')?.addEventListener('change', (e) => {
     }
 });
 
-// 📝 ปุ่มบันทึกการแจกของ
 document.getElementById('btnDistribute')?.addEventListener('click', async () => {
     const recipientSelect = document.getElementById('recipientSelect');
     const recipientOtherInput = document.getElementById('recipientOtherInput');
@@ -276,6 +414,7 @@ document.getElementById('btnDistribute')?.addEventListener('click', async () => 
         if (qtyInput) qtyInput.value = '';
 
         await loadStockData();
+        await loadActivityLogs();
     }
 });
 
@@ -297,6 +436,7 @@ document.getElementById('btnReturn')?.addEventListener('click', async () => {
         toastSuccess('ส่งคืนคลังใหญ่สำเร็จ! ↩️', `ส่งคืนเวชภัณฑ์จำนวน ${qty} Set เข้าคลังใหญ่เรียบร้อยแล้ว`);
         qtyInput.value = '';
         await loadStockData();
+        await loadActivityLogs();
     }
 });
 
@@ -339,11 +479,18 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
         actualQtyInput.value = '';
         noteInput.value = '';
         await loadStockData();
+        await loadActivityLogs();
     }
 });
 
+// ปุ่มกดรีเฟรชตารางประวัติกิจกรรม
+document.getElementById('btnRefreshLogs')?.addEventListener('click', async () => {
+    await loadActivityLogs();
+    toastSuccess('อัปเดตข้อมูลสำเร็จ 🔄', 'ดึงข้อมูลกิจกรรมล่าสุดเรียบร้อยแล้ว');
+});
+
 // -------------------------------------------------------------
-// 📊 7.1 Export Excel Report (ปรับขนาดคอลัมน์ Auto Width)
+// 📊 7. Export Excel Report
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -478,14 +625,6 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
         toastError('เกิดข้อผิดพลาดในการดึงรายงาน', err.message);
     }
 });
-
-/* -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (ปิดการทำงานชั่วคราว)
-// -------------------------------------------------------------
-document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
-    // โค้ดฟังก์ชันส่งออก PDF ถูกซ่อนไว้ชั่วคราว
-});
-------------------------------------------------------------- */
 
 // -------------------------------------------------------------
 // 🚪 8. ปุ่ม Logout
