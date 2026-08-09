@@ -214,7 +214,7 @@ async function loadStockData() {
 }
 
 // -------------------------------------------------------------
-// 📜 3.5 ดึงข้อมูล Activity Log มาแสดงผลบนหน้าเว็บเรียลไทม์ (กรองรายการซ้ำออก)
+// 📜 3.5 ดึงข้อมูล Activity Log มาแสดงผลบนหน้าเว็บเรียลไทม์ (แสดงครบทุกกิจกรรม + ไม่ซ้ำ)
 // -------------------------------------------------------------
 async function loadActivityLogs() {
     const tableBody = document.getElementById('activityLogTableBody');
@@ -227,21 +227,21 @@ async function loadActivityLogs() {
             userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
         });
 
-        // 1. ดึงสต๊อกธุรกรรมคลัง
+        // 1. ดึงสต๊อกธุรกรรมคลังใหญ่/คลังย่อย
         const { data: txList } = await supabase
             .from('stock_transactions')
             .select('*')
             .order('created_at', { ascending: false })
             .limit(20);
 
-        // 2. ดึงประวัติการแจก
+        // 2. ดึงประวัติการแจกใช้งาน
         const { data: distList } = await supabase
             .from('distribution_logs')
             .select('*')
             .order('created_at', { ascending: false })
             .limit(20);
 
-        // 3. ดึงประวัติตรวจนับ
+        // 3. ดึงประวัติตรวจนับประจำเวร
         const { data: auditList } = await supabase
             .from('daily_stock_counts')
             .select('*')
@@ -250,20 +250,27 @@ async function loadActivityLogs() {
 
         const combinedLogs = [];
 
+        // 🟢 1. แปลงรายการจากตาราง stock_transactions (เติมคลัง, จ่ายออก, ส่งคืน)
         (txList || []).forEach(t => {
+            const note = t.note || '';
+
+            // กรองรายการปรับยอดอัตโนมัติจากการนับออก ไม่ให้ขึ้นซ้ำ
+            if (note.includes('ปรับยอดจากการนับ') || note.includes('Diff:')) return;
+
             let badge = '';
             let actionText = '';
 
-            // 🎯 กรองเฉพาะกิจกรรม เติมคลังใหญ่ และ ส่งคืนคลังใหญ่ (ข้าม ISSUE/ตัดจ่ายสต๊อกย่อยเพื่อป้องกันรายการซ้ำกับแจกใช้งาน)
             if (t.type === 'RESTOCK') {
-                if ((t.note || '').includes('ปรับยอดจากการนับ')) return; // ข้าม log ปรับสตรีม
                 badge = `<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold">➕ เติมคลังใหญ่</span>`;
-                actionText = t.note || 'เติมสต๊อกคลังใหญ่';
+                actionText = note || 'เติมสต๊อกคลังใหญ่';
+            } else if (t.type === 'ISSUE') {
+                badge = `<span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-semibold">➡️ จ่ายให้คลังย่อย</span>`;
+                actionText = note || 'โอนย้ายไปคลังย่อย EMS';
             } else if (t.type === 'RETURN') {
                 badge = `<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">↩️ ส่งคืนคลังใหญ่</span>`;
-                actionText = t.note || 'คืนเวชภัณฑ์เข้าคลังใหญ่';
+                actionText = note || 'คืนเวชภัณฑ์เข้าคลังใหญ่';
             } else {
-                return; // ข้ามรายการประเภทอื่นที่ไม่มีกิจกรรมระบุชัดเจน
+                return; // ข้ามรายการประเภทอื่นที่ไม่มีกิจกรรมระบุ
             }
 
             combinedLogs.push({
@@ -275,7 +282,7 @@ async function loadActivityLogs() {
             });
         });
 
-        // รายการแจกใช้งาน (Distribute)
+        // 🟣 2. แปลงรายการจากตาราง distribution_logs (แจกใช้งาน)
         (distList || []).forEach(d => {
             const rawRecipient = d.recipient_info || d.note || '-';
             const cleanRecipient = rawRecipient.replace(/^แจกให้:\s*/, '');
@@ -288,7 +295,7 @@ async function loadActivityLogs() {
             });
         });
 
-        // รายการตรวจนับประจำเวร (Daily Audit)
+        // ⚪ 3. แปลงรายการจากตาราง daily_stock_counts (ตรวจนับประจำเวร)
         (auditList || []).forEach(a => {
             const userId = a.counted_by || a.recorder_id || a.created_by;
             combinedLogs.push({
@@ -300,7 +307,7 @@ async function loadActivityLogs() {
             });
         });
 
-        // เรียงลำดับเวลาใหม่ไปเก่า และดึง 20 รายการแรก
+        // เรียงลำดับเวลาใหม่ไปเก่า และแสดง 20 รายการล่าสุด
         combinedLogs.sort((a, b) => b.created_at - a.created_at);
         const top20Logs = combinedLogs.slice(0, 20);
 
