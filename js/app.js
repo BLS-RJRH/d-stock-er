@@ -214,7 +214,7 @@ async function loadStockData() {
 }
 
 // -------------------------------------------------------------
-// 📜 3.5 ดึงข้อมูล Activity Log มาแสดงผลบนหน้าเว็บเรียลไทม์
+// 📜 3.5 ดึงข้อมูล Activity Log มาแสดงผลบนหน้าเว็บเรียลไทม์ (กรองรายการซ้ำออก)
 // -------------------------------------------------------------
 async function loadActivityLogs() {
     const tableBody = document.getElementById('activityLogTableBody');
@@ -227,25 +227,43 @@ async function loadActivityLogs() {
             userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
         });
 
-        const { data: txList } = await supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(15);
-        const { data: distList } = await supabase.from('distribution_logs').select('*').order('created_at', { ascending: false }).limit(15);
-        const { data: auditList } = await supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false }).limit(15);
+        // 1. ดึงสต๊อกธุรกรรมคลัง
+        const { data: txList } = await supabase
+            .from('stock_transactions')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        // 2. ดึงประวัติการแจก
+        const { data: distList } = await supabase
+            .from('distribution_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        // 3. ดึงประวัติตรวจนับ
+        const { data: auditList } = await supabase
+            .from('daily_stock_counts')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(20);
 
         const combinedLogs = [];
 
         (txList || []).forEach(t => {
             let badge = '';
             let actionText = '';
+
+            // 🎯 กรองเฉพาะกิจกรรม เติมคลังใหญ่ และ ส่งคืนคลังใหญ่ (ข้าม ISSUE/ตัดจ่ายสต๊อกย่อยเพื่อป้องกันรายการซ้ำกับแจกใช้งาน)
             if (t.type === 'RESTOCK') {
-                if ((t.note || '').includes('ปรับยอดจากการนับ')) return;
+                if ((t.note || '').includes('ปรับยอดจากการนับ')) return; // ข้าม log ปรับสตรีม
                 badge = `<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold">➕ เติมคลังใหญ่</span>`;
                 actionText = t.note || 'เติมสต๊อกคลังใหญ่';
-            } else if (t.type === 'ISSUE') {
-                badge = `<span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-semibold">➡️ จ่ายให้คลังย่อย</span>`;
-                actionText = t.note || 'โอนย้ายไปคลังย่อย EMS';
             } else if (t.type === 'RETURN') {
                 badge = `<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">↩️ ส่งคืนคลังใหญ่</span>`;
                 actionText = t.note || 'คืนเวชภัณฑ์เข้าคลังใหญ่';
+            } else {
+                return; // ข้ามรายการประเภทอื่นที่ไม่มีกิจกรรมระบุชัดเจน
             }
 
             combinedLogs.push({
@@ -257,6 +275,7 @@ async function loadActivityLogs() {
             });
         });
 
+        // รายการแจกใช้งาน (Distribute)
         (distList || []).forEach(d => {
             const rawRecipient = d.recipient_info || d.note || '-';
             const cleanRecipient = rawRecipient.replace(/^แจกให้:\s*/, '');
@@ -269,6 +288,7 @@ async function loadActivityLogs() {
             });
         });
 
+        // รายการตรวจนับประจำเวร (Daily Audit)
         (auditList || []).forEach(a => {
             const userId = a.counted_by || a.recorder_id || a.created_by;
             combinedLogs.push({
@@ -280,6 +300,7 @@ async function loadActivityLogs() {
             });
         });
 
+        // เรียงลำดับเวลาใหม่ไปเก่า และดึง 20 รายการแรก
         combinedLogs.sort((a, b) => b.created_at - a.created_at);
         const top20Logs = combinedLogs.slice(0, 20);
 
@@ -308,7 +329,6 @@ async function loadActivityLogs() {
         tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
     }
 }
-
 // -------------------------------------------------------------
 // 🏢 4. ฟังก์ชันฝั่งคลังใหญ่ (Restock & Issue)
 // -------------------------------------------------------------
