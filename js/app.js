@@ -402,24 +402,19 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
             XLSX.utils.book_append_sheet(workbook, sheet, "3. ประวัติการแจกใช้งาน");
         }
 
-        // 📋 4. บันทึกตรวจนับประจำเวร (DAILY AUDIT - ดึงคอลัมน์ counted_by โดยตรง)
+        // 📋 4. บันทึกตรวจนับประจำเวร (DAILY AUDIT)
         if (isAuditChecked) {
             let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
             if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
 
             const { data: auditList } = await query;
-            const auditData = (auditList || []).map(a => {
-                const userId = a.counted_by || a.recorder_id || a.created_by;
-                const staffName = userId && userMap[userId] ? userMap[userId] : 'ผู้ใช้งานระบบ';
-
-                return {
-                    'วันที่-เวลา ตรวจนับ': new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
-                    'ผู้ตรวจนับ (Staff)': staffName,
-                    'จำนวนที่นับได้จริง (Set)': a.actual_qty ?? a.quantity ?? 0,
-                    'หมายเหตุ': a.note || '-'
-                };
-            });
+            const auditData = (auditList || []).map(a => ({
+                'วันที่-เวลา ตรวจนับ': new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
+                'ผู้ตรวจนับ (Staff)': a.recorder_id ? userMap[a.recorder_id] : (a.created_by ? userMap[a.created_by] : (CURRENT_USER ? `${CURRENT_USER.full_name} (${CURRENT_USER.staff_code || '-'})` : 'ผู้ใช้งานระบบ')),
+                'จำนวนที่นับได้จริง (Set)': a.actual_qty ?? a.quantity ?? 0,
+                'หมายเหตุ': a.note || '-'
+            }));
             const sheet = XLSX.utils.json_to_sheet(auditData.length ? auditData : [{'ข้อความ': 'ไม่มีข้อมูล'}]);
             XLSX.utils.book_append_sheet(workbook, sheet, "4. สรุปยอดนับประจำเวร");
         }
