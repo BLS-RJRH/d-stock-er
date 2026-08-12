@@ -100,6 +100,7 @@
                 <span class="text-xs font-semibold bg-red-100 text-red-800 px-2.5 py-1 rounded-full">Center Staff / Admin</span>
             </div>
 
+            <!-- สรุปยอดคลังใหญ่ -->
             <div class="bg-red-50 border border-red-100 p-4 rounded-xl flex justify-between items-center">
                 <div>
                     <p class="text-xs text-red-600 font-medium">ยอดสต๊อกคงเหลือคลังใหญ่</p>
@@ -107,7 +108,9 @@
                 </div>
             </div>
 
+            <!-- ฟอร์มเติมของ & จ่ายของ -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- ➕ เติมของเข้าคลังใหญ่ -->
                 <div class="p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
                     <h3 class="text-xs font-bold text-slate-700">➕ เติมของเข้าคลังใหญ่ (Restock)</h3>
                     <div class="flex gap-2">
@@ -116,12 +119,28 @@
                     </div>
                 </div>
 
+                <!-- ➡️ จ่ายของออกให้คลังย่อย -->
                 <div class="p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200">
                     <h3 class="text-xs font-bold text-slate-700">➡️ จ่ายของออกให้คลังย่อย (Issue)</h3>
                     <div class="flex gap-2">
                         <input type="number" id="issueQty" placeholder="จำนวนที่จ่าย" class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
                         <button id="btnIssue" type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm whitespace-nowrap transition active:scale-95">จ่ายออก</button>
                     </div>
+                </div>
+            </div>
+
+            <!-- 📋 บันทึกตรวจนับสต๊อกประจำเวรคลังใหญ่ (Central Daily Audit) -->
+            <div class="p-4 bg-slate-50 rounded-xl space-y-3 border border-slate-200 pt-3">
+                <h3 class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <span>📋 บันทึกตรวจนับสต๊อกประจำเวรคลังใหญ่ (Central Audit)</span>
+                </h3>
+                <p class="text-xs text-slate-500">ใช้นับยอดสินค้าจริงบนชั้นวางคลังใหญ่ เพื่อปรับยอดให้ตรงกับระบบ</p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <input type="number" id="centralActualCountQty" placeholder="จำนวนที่นับได้จริง (Set)" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
+                    <input type="text" id="centralCountNote" placeholder="หมายเหตุ (เช่น ปกติ / ของชำรุด 1 ชุด)" class="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
+                    <button id="btnSaveCentralDailyCount" type="button" class="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg text-sm transition active:scale-95 whitespace-nowrap">
+                        ยืนยันยอดตรวจนับคลังใหญ่
+                    </button>
                 </div>
             </div>
         </div>
@@ -181,10 +200,10 @@
                 </div>
             </div>
 
-            <!-- บันทึกตรวจนับประจำเวร -->
+            <!-- บันทึกตรวจนับประจำเวรคลังย่อย -->
             <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-3">
                 <h3 class="text-base font-bold text-slate-800 border-b pb-2 flex items-center gap-2">
-                    <span>📋 บันทึกตรวจนับสต๊อกประจำเวร (Daily Audit)</span>
+                    <span>📋 บันทึกตรวจนับสต๊อกประจำเวรคลังย่อย (Sub Audit)</span>
                 </h3>
                 <p class="text-xs text-slate-500">ใช้นับยอดจริงในสต๊อค เพื่อปรับยอดให้ตรงกับระบบทุกวัน</p>
                 
@@ -280,7 +299,7 @@
                     <button id="btnExportExcel" type="button" class="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition active:scale-95 whitespace-nowrap shadow-md flex items-center justify-center gap-1.5">
                         <span>📥 ดาวน์โหลด Excel</span>
                     </button>
-                    <!-- 👑 ปุ่ม PDF จะแสดงผลเฉพาะ Super Admin -->
+                    <!-- 👑 ปุ่ม PDF แสดงเฉพาะ Super Admin -->
                     <button id="btnExportPDF" type="button" class="hidden flex-1 sm:flex-none bg-rose-600 hover:bg-rose-700 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition active:scale-95 whitespace-nowrap shadow-md items-center justify-center gap-1.5">
                         <span>📄 ดาวน์โหลด PDF</span>
                     </button>
