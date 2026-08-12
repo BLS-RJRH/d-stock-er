@@ -108,9 +108,11 @@ function setupTabsNav() {
             const targetTabId = btn.getAttribute('data-tab');
 
             tabBtns.forEach(b => {
-                b.className = "tab-btn flex-1 min-w-[120px] py-2.5 px-3 rounded-xl text-xs md:text-sm font-semibold transition flex items-center justify-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200";
+                b.classList.remove('bg-slate-800', 'text-white', 'shadow-sm');
+                b.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
             });
-            btn.className = "tab-btn flex-1 min-w-[120px] py-2.5 px-3 rounded-xl text-xs md:text-sm font-semibold transition flex items-center justify-center gap-1.5 bg-slate-800 text-white shadow-sm";
+            btn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+            btn.classList.add('bg-slate-800', 'text-white', 'shadow-sm');
 
             tabContents.forEach(content => {
                 if (content.id === targetTabId) {
@@ -124,53 +126,51 @@ function setupTabsNav() {
 }
 
 // -------------------------------------------------------------
-// 🎨 2. ควบคุมการแสดงผล UI ตามสิทธิ์ใช้งานที่ถูกต้องอย่างรัดกุม
+// 🎨 2. ควบคุมการแสดงผล UI ตามสิทธิ์ใช้งานอย่างรัดกุม (ซ่อนเมนู Staff ทั่วไป)
 // -------------------------------------------------------------
 function setupUIByRole(role) {
     const btnManageStaff = document.getElementById('btnManageStaff');
     const btnExportPDF = document.getElementById('btnExportPDF');
+    const navTabsContainer = document.getElementById('navTabsContainer');
     
-    const tabCentralBtn = document.querySelector('[data-tab="tabCentral"]');
-    const tabSubBtn = document.querySelector('[data-tab="tabSub"]');
-    const tabLogBtn = document.querySelector('[data-tab="tabLog"]');
-    const tabExportBtn = document.querySelector('[data-tab="tabExport"]');
+    const tabCentral = document.getElementById('tabCentral');
+    const tabSub = document.getElementById('tabSub');
+    const tabLog = document.getElementById('tabLog');
+    const tabExport = document.getElementById('tabExport');
 
-    // 👥 ปุ่มจัดการ Staff (เฉพาะ Super Admin)
+    // 👥 ปุ่มจัดการ Staff และ PDF (เฉพาะ Super Admin)
     if (role === 'SUPER_ADMIN') {
         btnManageStaff?.classList.remove('hidden');
-        btnExportPDF?.classList.remove('hidden'); // 📄 แสดงปุ่ม PDF
+        btnExportPDF?.classList.remove('hidden'); 
         btnExportPDF?.classList.add('flex');
     } else {
         btnManageStaff?.classList.add('hidden');
-        btnExportPDF?.classList.add('hidden'); // 🙈 ซ่อนปุ่ม PDF สำหรับบทบาทอื่น
+        btnExportPDF?.classList.add('hidden'); 
         btnExportPDF?.classList.remove('flex');
     }
 
-    // 🔒 จำกัดสิทธิ์การมองเห็นแท็บเมนูตามบทบาทหน้าที่
+    // 🔒 ซ่อนแท็บเมนูสำหรับ Staff ทั่วไป เพื่อไม่ให้เห็นโครงสร้างระบบ
     if (role === 'CENTER_STAFF') {
-        tabCentralBtn?.classList.remove('hidden');
-        tabSubBtn?.classList.add('hidden');
-        tabLogBtn?.classList.add('hidden');
-        tabExportBtn?.classList.add('hidden');
-        tabCentralBtn?.click();
+        if (navTabsContainer) navTabsContainer.style.display = 'none';
+
+        if (tabCentral) tabCentral.classList.remove('hidden');
+        if (tabSub) tabSub.classList.add('hidden');
+        if (tabLog) tabLog.classList.add('hidden');
+        if (tabExport) tabExport.classList.add('hidden');
+
     } else if (role === 'SUB_STAFF') {
-        tabCentralBtn?.classList.add('hidden');
-        tabSubBtn?.classList.remove('hidden');
-        tabLogBtn?.classList.add('hidden');
-        tabExportBtn?.classList.add('hidden');
-        tabSubBtn?.click();
-    } else if (role === 'ADMIN') {
-        tabCentralBtn?.classList.remove('hidden');
-        tabSubBtn?.classList.remove('hidden');
-        tabLogBtn?.classList.remove('hidden');
-        tabExportBtn?.classList.remove('hidden');
-        tabCentralBtn?.click();
-    } else if (role === 'SUPER_ADMIN') {
-        tabCentralBtn?.classList.remove('hidden');
-        tabSubBtn?.classList.remove('hidden');
-        tabLogBtn?.classList.remove('hidden');
-        tabExportBtn?.classList.remove('hidden');
-        tabCentralBtn?.click();
+        if (navTabsContainer) navTabsContainer.style.display = 'none';
+
+        if (tabCentral) tabCentral.classList.add('hidden');
+        if (tabSub) tabSub.classList.remove('hidden');
+        if (tabLog) tabLog.classList.add('hidden');
+        if (tabExport) tabExport.classList.add('hidden');
+
+    } else if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
+        if (navTabsContainer) navTabsContainer.style.display = 'flex';
+        
+        const tabCentralBtn = document.querySelector('[data-tab="tabCentral"]');
+        if (tabCentralBtn) tabCentralBtn.click();
     }
 }
 
@@ -224,7 +224,7 @@ async function loadStockData() {
 }
 
 // -------------------------------------------------------------
-// 📜 3.5 ดึงข้อมูล Activity Log มาแสดงผลบนหน้าเว็บเรียลไทม์
+// 📜 3.5 ดึงข้อมูล Activity Log มาแสดงผลบนหน้าเว็บเรียลไทม์ (20 รายการล่าสุด)
 // -------------------------------------------------------------
 async function loadActivityLogs() {
     const tableBody = document.getElementById('activityLogTableBody');
@@ -518,7 +518,7 @@ document.getElementById('btnRefreshLogs')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📊 7.1 Export Excel Report
+// 📊 7.1 Export Excel Report (พร้อมระบบล็อคปุ่มป้องกันกดซ้ำ)
 // -------------------------------------------------------------
 document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
     if (!CURRENT_USER || (CURRENT_USER.role !== 'SUPER_ADMIN' && CURRENT_USER.role !== 'ADMIN')) {
@@ -534,10 +534,18 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
         return toastWarning('กรุณาเลือกหัวข้อ', 'โปรดเลือกหัวข้อรายงานอย่างน้อย 1 รายการ');
     }
 
-    const startDate = document.getElementById('exportStartDate')?.value;
-    const endDate = document.getElementById('exportEndDate')?.value;
+    const btnExcel = document.getElementById('btnExportExcel');
+    const originalText = btnExcel.innerHTML;
 
     try {
+        // 🛑 🔒 1. ล็อคปุ่มทันทีเพื่อป้องกันการกดย้ำ
+        btnExcel.disabled = true;
+        btnExcel.classList.add('opacity-50', 'cursor-not-allowed');
+        btnExcel.innerHTML = `<span>⏳ กำลังสร้าง Excel...</span>`;
+
+        const startDate = document.getElementById('exportStartDate')?.value;
+        const endDate = document.getElementById('exportEndDate')?.value;
+
         const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
         const userMap = {};
         (profiles || []).forEach(p => {
@@ -647,11 +655,16 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
     } catch (err) {
         console.error('Export Excel Error:', err);
         toastError('เกิดข้อผิดพลาดในการดึงรายงาน', err.message);
+    } finally {
+        // 🔓 2. ปลดล็อคปุ่มคืนค่าเดิมเสมอไม่ว่าจะสำเร็จหรือเกิด Error
+        btnExcel.disabled = false;
+        btnExcel.classList.remove('opacity-50', 'cursor-not-allowed');
+        btnExcel.innerHTML = originalText;
     }
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (ปลดล็อกให้เฉพาะ SUPER_ADMIN เท่านั้น)
+// 📄 7.2 Export PDF Executive Report (พร้อมระบบล็อคปุ่มป้องกันกดซ้ำ)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || CURRENT_USER.role !== 'SUPER_ADMIN') {
@@ -667,17 +680,35 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         return toastWarning('กรุณาเลือกหัวข้อ', 'โปรดเลือกหัวข้อรายงานอย่างน้อย 1 รายการ');
     }
 
-    const startDate = document.getElementById('exportStartDate')?.value;
-    const endDate = document.getElementById('exportEndDate')?.value;
+    const btnPDF = document.getElementById('btnExportPDF');
+    const originalText = btnPDF.innerHTML;
 
     try {
-        const { data: profiles } = await supabase.from('profiles').select('id, full_name, staff_code');
+        // 🛑 🔒 1. ล็อคปุ่มทันทีเพื่อป้องกันการกดย้ำ
+        btnPDF.disabled = true;
+        btnPDF.classList.add('opacity-50', 'cursor-not-allowed');
+        btnPDF.innerHTML = `<span>⏳ กำลังสร้าง PDF...</span>`;
+
+        Swal.fire({
+            title: 'กำลังสร้างไฟล์ PDF...',
+            text: 'กรุณารอครู่หนึ่ง ระบบกำลังรวบรวมข้อมูล',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        const startDate = document.getElementById('exportStartDate')?.value;
+        const endDate = document.getElementById('exportEndDate')?.value;
+
+        const { data: profiles, error: profErr } = await supabase.from('profiles').select('id, full_name, staff_code');
+        if (profErr) console.warn('Profiles Query Warning:', profErr.message);
+
         const userMap = {};
         (profiles || []).forEach(p => {
             userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
         });
 
         if (typeof html2pdf === 'undefined') {
+            Swal.close();
             return toastError('ไม่พบการอ้างอิงไฟล์ PDF', 'กรุณาตรวจสอบ CDN ของ html2pdf ในหน้าเว็บ');
         }
 
@@ -743,7 +774,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             const filtered = (list || []).filter(t => !(t.note || '').includes('ปรับยอดจากการนับ') && !(t.note || '').includes('Diff:'));
             const rows = filtered.map(t => [
                 new Date(t.created_at).toLocaleString('th-TH'),
-                t.to_user_id ? userMap[t.to_user_id] : 'ระบบ / Admin',
+                t.to_user_id && userMap[t.to_user_id] ? userMap[t.to_user_id] : (t.from_user_id && userMap[t.from_user_id] ? userMap[t.from_user_id] : 'ระบบ / Admin'),
                 `${t.quantity} Set`,
                 t.note || '-'
             ]);
@@ -759,7 +790,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             const rows = (list || []).map(t => [
                 new Date(t.created_at).toLocaleString('th-TH'),
                 t.type === 'ISSUE' ? 'จ่ายให้คลังย่อย' : 'ส่งคืนคลังใหญ่',
-                t.to_user_id ? userMap[t.to_user_id] : 'ผู้ใช้งานระบบ',
+                t.to_user_id && userMap[t.to_user_id] ? userMap[t.to_user_id] : (t.from_user_id && userMap[t.from_user_id] ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ'),
                 `${t.quantity} Set`
             ]);
             fullHTML += buildTableHTML("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows);
@@ -773,7 +804,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             const { data: list } = await query;
             const rows = (list || []).map(d => [
                 new Date(d.created_at).toLocaleString('th-TH'),
-                d.distributor_id ? userMap[d.distributor_id] : 'ผู้ใช้งานระบบ',
+                d.distributor_id && userMap[d.distributor_id] ? userMap[d.distributor_id] : 'ผู้ใช้งานระบบ',
                 (d.recipient_info || d.note || '-').replace(/^แจกให้:\s*/, ''),
                 `${d.quantity} Set`
             ]);
@@ -788,7 +819,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             const { data: list } = await query;
             const rows = (list || []).map(a => [
                 new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
-                a.counted_by ? userMap[a.counted_by] : 'ผู้ใช้งานระบบ',
+                a.counted_by && userMap[a.counted_by] ? userMap[a.counted_by] : 'ผู้ใช้งานระบบ',
                 `${a.actual_qty ?? 0} Set`,
                 a.note || '-'
             ]);
@@ -810,14 +841,20 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
 
         await html2pdf().set(opt).from(printContainer).save();
         
+        Swal.close();
         toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF เรียบร้อยแล้ว');
 
     } catch (err) {
+        Swal.close();
         console.error('Export PDF Error:', err);
-        toastError('เกิดข้อผิดพลาดในการสร้าง PDF', err.message);
+        toastError('เกิดข้อผิดพลาดในการสร้าง PDF', err.message || 'โปรดลองใหม่อีกครั้ง');
+    } finally {
+        // 🔓 2. ปลดล็อคปุ่มคืนค่าเดิมเสมอไม่ว่าจะสำเร็จหรือเกิด Error
+        btnPDF.disabled = false;
+        btnPDF.classList.remove('opacity-50', 'cursor-not-allowed');
+        btnPDF.innerHTML = originalText;
     }
 });
-
 // -------------------------------------------------------------
 // 🚪 8. ปุ่ม Logout
 // -------------------------------------------------------------
