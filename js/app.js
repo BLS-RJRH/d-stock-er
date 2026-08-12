@@ -126,7 +126,7 @@ function setupTabsNav() {
 }
 
 // -------------------------------------------------------------
-// 🎨 2. ควบคุมการแสดงผล UI ตามสิทธิ์ใช้งานอย่างรัดกุม (ซ่อนเมนู Staff ทั่วไป)
+// 🎨 2. ควบคุมการแสดงผล UI ตามสิทธิ์ใช้งานอย่างรัดกุม
 // -------------------------------------------------------------
 function setupUIByRole(role) {
     const btnManageStaff = document.getElementById('btnManageStaff');
@@ -339,7 +339,7 @@ async function loadActivityLogs() {
 }
 
 // -------------------------------------------------------------
-// 🏢 4. ฟังก์ชันฝั่งคลังใหญ่ (Restock & Issue)
+// 🏢 4. ฟังก์ชันฝั่งคลังใหญ่ (Restock & Issue & Central Audit)
 // -------------------------------------------------------------
 document.getElementById('btnRestock')?.addEventListener('click', async () => {
     const qtyInput = document.getElementById('restockQty');
@@ -367,7 +367,7 @@ document.getElementById('btnIssue')?.addEventListener('click', async () => {
     const qtyInput = document.getElementById('issueQty');
     const qty = parseInt(qtyInput.value);
 
-    if (!qty || qty <= 0) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่ต้องการจ่ายออก');
+    if (!qty || qty <= 0) return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่จ่ายออก');
 
     const { error } = await supabase.rpc('issue_stock_to_sub', {
         p_item_id: 1,
@@ -386,8 +386,67 @@ document.getElementById('btnIssue')?.addEventListener('click', async () => {
     }
 });
 
+// 📋 บันทึกตรวจนับสต๊อกประจำเวรคลังใหญ่ (Central Audit)
+document.getElementById('btnSaveCentralDailyCount')?.addEventListener('click', async () => {
+    const actualQtyInput = document.getElementById('centralActualCountQty');
+    const noteInput = document.getElementById('centralCountNote');
+    const actualQty = parseInt(actualQtyInput.value);
+    const note = noteInput.value.trim() || 'ตรวจนับประจำเวรคลังใหญ่ปกติ';
+
+    if (isNaN(actualQty) || actualQty < 0) {
+        return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่นับได้จริงในคลังใหญ่');
+    }
+
+    const confirmRes = await Swal.fire({
+        title: 'ยืนยันยอดตรวจนับคลังใหญ่?',
+        text: `ต้องการปรับยอดคงเหลือคลังใหญ่ในระบบเป็น ${actualQty} Set หรือไม่?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#1E293B',
+        cancelButtonColor: '#94A3B8',
+        confirmButtonText: 'ยืนยันบันทึก',
+        cancelButtonText: 'ยกเลิก',
+        customClass: { popup: 'rounded-2xl' }
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
+    // ลองส่งแบบรองรับหลายลักษณะฟังก์ชัน RPC
+    let { error } = await supabase.rpc('record_daily_count', {
+        p_actual_qty: actualQty,
+        p_note: `[คลังใหญ่] ${note}`,
+        p_stock_type: 'CENTRAL'
+    });
+
+    if (error && error.message.includes('p_stock_type')) {
+        const res2 = await supabase.rpc('record_central_daily_count', {
+            p_actual_qty: actualQty,
+            p_note: note
+        });
+        if (res2.error) {
+            const res3 = await supabase.rpc('record_daily_count', {
+                p_actual_qty: actualQty,
+                p_note: `[คลังใหญ่] ${note}`
+            });
+            error = res3.error;
+        } else {
+            error = null;
+        }
+    }
+
+    if (error) {
+        toastError('บันทึกตรวจนับคลังใหญ่ไม่สำเร็จ', error.message);
+    } else {
+        toastSuccess('ปรับยอดสต๊อกคลังใหญ่สำเร็จ! 📋', 'ปรับยอดคงเหลือจริงในคลังใหญ่เรียบร้อยแล้ว');
+        actualQtyInput.value = '';
+        noteInput.value = '';
+        await loadStockData();
+        if (CURRENT_USER.role === 'SUPER_ADMIN' || CURRENT_USER.role === 'ADMIN') await loadActivityLogs();
+    }
+});
+
 // -------------------------------------------------------------
-// 🩺 5. ฟังก์ชันฝั่งคลังย่อย (Distribute & Return)
+// 🩺 5. ฟังก์ชันฝั่งคลังย่อย (Distribute & Return & Sub Audit)
 // -------------------------------------------------------------
 document.getElementById('recipientSelect')?.addEventListener('change', (e) => {
     const otherInput = document.getElementById('recipientOtherInput');
@@ -469,22 +528,20 @@ document.getElementById('btnReturn')?.addEventListener('click', async () => {
     }
 });
 
-// -------------------------------------------------------------
-// 📋 6. บันทึกตรวจนับสต๊อกประจำเวร (Daily Stock Audit)
-// -------------------------------------------------------------
+// 📋 บันทึกตรวจนับสต๊อกประจำเวรคลังย่อย (Sub Audit)
 document.getElementById('btnSaveDailyCount')?.addEventListener('click', async () => {
     const actualQtyInput = document.getElementById('actualCountQty');
     const noteInput = document.getElementById('countNote');
     const actualQty = parseInt(actualQtyInput.value);
-    const note = noteInput.value.trim() || 'ตรวจนับประจำเวรปกติ';
+    const note = noteInput.value.trim() || 'ตรวจนับประจำเวรคลังย่อยปกติ';
 
     if (isNaN(actualQty) || actualQty < 0) {
-        return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่นับได้จริงบนชั้นวาง');
+        return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่นับได้จริงบนชั้นวางคลังย่อย');
     }
 
     const confirmRes = await Swal.fire({
-        title: 'ยืนยันยอดตรวจนับ?',
-        text: `ต้องการปรับยอดคงเหลือระบบเป็น ${actualQty} Set หรือไม่?`,
+        title: 'ยืนยันยอดตรวจนับคลังย่อย?',
+        text: `ต้องการปรับยอดคงเหลือคลังย่อยในระบบเป็น ${actualQty} Set หรือไม่?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#1E293B',
@@ -502,9 +559,9 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
     });
 
     if (error) {
-        toastError('บันทึกตรวจนับไม่สำเร็จ', error.message);
+        toastError('บันทึกตรวจนับคลังย่อยไม่สำเร็จ', error.message);
     } else {
-        toastSuccess('ปรับยอดสต๊อกสำเร็จ! 📋', 'ปรับยอดคงเหลือจริงในระบบให้ตรงกับชั้นวางเรียบร้อยแล้ว');
+        toastSuccess('ปรับยอดสต๊อกคลังย่อยสำเร็จ! 📋', 'ปรับยอดคงเหลือจริงในคลังย่อยเรียบร้อยแล้ว');
         actualQtyInput.value = '';
         noteInput.value = '';
         await loadStockData();
@@ -538,7 +595,6 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
     const originalText = btnExcel.innerHTML;
 
     try {
-        // 🛑 🔒 1. ล็อคปุ่มทันทีเพื่อป้องกันการกดย้ำ
         btnExcel.disabled = true;
         btnExcel.classList.add('opacity-50', 'cursor-not-allowed');
         btnExcel.innerHTML = `<span>⏳ กำลังสร้าง Excel...</span>`;
@@ -656,7 +712,6 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
         console.error('Export Excel Error:', err);
         toastError('เกิดข้อผิดพลาดในการดึงรายงาน', err.message);
     } finally {
-        // 🔓 2. ปลดล็อคปุ่มคืนค่าเดิมเสมอไม่ว่าจะสำเร็จหรือเกิด Error
         btnExcel.disabled = false;
         btnExcel.classList.remove('opacity-50', 'cursor-not-allowed');
         btnExcel.innerHTML = originalText;
@@ -664,7 +719,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (พร้อมระบบล็อคปุ่มป้องกันกดซ้ำ)
+// 📄 7.2 Export PDF Executive Report (เฉพาะ SUPER_ADMIN เท่านั้น + ล็อคปุ่ม)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || CURRENT_USER.role !== 'SUPER_ADMIN') {
@@ -684,7 +739,6 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     const originalText = btnPDF.innerHTML;
 
     try {
-        // 🛑 🔒 1. ล็อคปุ่มทันทีเพื่อป้องกันการกดย้ำ
         btnPDF.disabled = true;
         btnPDF.classList.add('opacity-50', 'cursor-not-allowed');
         btnPDF.innerHTML = `<span>⏳ กำลังสร้าง PDF...</span>`;
@@ -849,12 +903,12 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         console.error('Export PDF Error:', err);
         toastError('เกิดข้อผิดพลาดในการสร้าง PDF', err.message || 'โปรดลองใหม่อีกครั้ง');
     } finally {
-        // 🔓 2. ปลดล็อคปุ่มคืนค่าเดิมเสมอไม่ว่าจะสำเร็จหรือเกิด Error
         btnPDF.disabled = false;
         btnPDF.classList.remove('opacity-50', 'cursor-not-allowed');
         btnPDF.innerHTML = originalText;
     }
 });
+
 // -------------------------------------------------------------
 // 🚪 8. ปุ่ม Logout
 // -------------------------------------------------------------
