@@ -259,7 +259,6 @@ async function loadActivityLogs() {
 
         (txList || []).forEach(t => {
             const note = t.note || '';
-            if (note.includes('ปรับยอดจากการนับ') || note.includes('Diff:')) return;
 
             let badge = '';
             let actionText = '';
@@ -273,6 +272,9 @@ async function loadActivityLogs() {
             } else if (t.type === 'RETURN') {
                 badge = `<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">↩️ ส่งคืนคลังใหญ่</span>`;
                 actionText = note || 'คืนเวชภัณฑ์เข้าคลังใหญ่';
+            } else if (t.type === 'AUDIT_ADJUST') {
+                badge = `<span class="bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full font-semibold">⚠️ ปรับยอดตรวจนับ</span>`;
+                actionText = note || 'ปรับยอดตามการตรวจนับ';
             } else {
                 return;
             }
@@ -386,7 +388,7 @@ document.getElementById('btnIssue')?.addEventListener('click', async () => {
     }
 });
 
-// 📋 บันทึกตรวจนับสต๊อกประจำเวรคลังใหญ่ (Central Audit)
+// 📋 บันทึกตรวจนับสต๊อกประจำเวรคลังใหญ่ (Central Audit พร้อมชุดคำสั่ง Fallback ครบถ้วน)
 document.getElementById('btnSaveCentralDailyCount')?.addEventListener('click', async () => {
     const actualQtyInput = document.getElementById('centralActualCountQty');
     const noteInput = document.getElementById('centralCountNote');
@@ -399,7 +401,7 @@ document.getElementById('btnSaveCentralDailyCount')?.addEventListener('click', a
 
     const confirmRes = await Swal.fire({
         title: 'ยืนยันยอดตรวจนับคลังใหญ่?',
-        text: `ต้องการปรับยอดคงเหลือคลังใหญ่ในระบบเป็น ${actualQty} Set หรือไม่?`,
+        text: `ต้องการบันทึกประวัติและปรับยอดคงเหลือคลังใหญ่ในระบบเป็น ${actualQty} Set หรือไม่?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#1E293B',
@@ -437,7 +439,7 @@ document.getElementById('btnSaveCentralDailyCount')?.addEventListener('click', a
     if (error) {
         toastError('บันทึกตรวจนับคลังใหญ่ไม่สำเร็จ', error.message);
     } else {
-        toastSuccess('ปรับยอดสต๊อกคลังใหญ่สำเร็จ! 📋', 'ปรับยอดคงเหลือจริงในคลังใหญ่เรียบร้อยแล้ว');
+        toastSuccess('บันทึกยอดสต๊อกคลังใหญ่สำเร็จ! 📋', 'ปรับยอดคงเหลือและบันทึกส่วนต่างเรียบร้อยแล้ว');
         actualQtyInput.value = '';
         noteInput.value = '';
         await loadStockData();
@@ -541,7 +543,7 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
 
     const confirmRes = await Swal.fire({
         title: 'ยืนยันยอดตรวจนับคลังย่อย?',
-        text: `ต้องการปรับยอดคงเหลือคลังย่อยในระบบเป็น ${actualQty} Set หรือไม่?`,
+        text: `ต้องการบันทึกประวัติและปรับยอดคงเหลือคลังย่อยในระบบเป็น ${actualQty} Set หรือไม่?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#1E293B',
@@ -561,7 +563,7 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
     if (error) {
         toastError('บันทึกตรวจนับคลังย่อยไม่สำเร็จ', error.message);
     } else {
-        toastSuccess('ปรับยอดสต๊อกคลังย่อยสำเร็จ! 📋', 'ปรับยอดคงเหลือจริงในคลังย่อยเรียบร้อยแล้ว');
+        toastSuccess('บันทึกยอดสต๊อกคลังย่อยสำเร็จ! 📋', 'ปรับยอดคงเหลือและบันทึกส่วนต่างเรียบร้อยแล้ว');
         actualQtyInput.value = '';
         noteInput.value = '';
         await loadStockData();
@@ -697,6 +699,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                     'วันที่-เวลา ตรวจนับ': new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
                     'ผู้ตรวจนับ (Staff)': staffName,
                     'จำนวนที่นับได้จริง (Set)': a.actual_qty ?? a.quantity ?? 0,
+                    'ยอดในระบบเดิม (Set)': a.system_qty ?? '-',
                     'หมายเหตุ': a.note || '-'
                 };
             });
