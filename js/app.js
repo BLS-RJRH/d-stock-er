@@ -149,7 +149,7 @@ function setupUIByRole(role) {
         btnExportPDF?.classList.remove('flex');
     }
 
-    // 🔒 ซ่อนแท็บเมนูสำหรับ Staff ทั่วไป เพื่อไม่ให้เห็นโครงสร้างระบบ
+    // 🔒 ซ่อนแท็บเมนูสำหรับ Staff เพื่อไม่ให้เห็นโครงสร้างระบบ
     if (role === 'CENTER_STAFF') {
         if (navTabsContainer) navTabsContainer.style.display = 'none';
 
@@ -237,18 +237,21 @@ async function loadActivityLogs() {
             userMap[p.id] = p.full_name ? `${p.full_name} (${p.staff_code || '-'})` : 'ไม่ระบุชื่อ';
         });
 
+        // 1. ดึงข้อมูล Transaction ปกติ
         const { data: txList } = await supabase
             .from('stock_transactions')
             .select('*')
             .order('created_at', { ascending: false })
             .limit(20);
 
+        // 2. ดึงประวัติการแจกใช้งาน
         const { data: distList } = await supabase
             .from('distribution_logs')
             .select('*')
             .order('created_at', { ascending: false })
             .limit(20);
 
+        // 3. ดึงประวัติตรวจนับประจำเวร
         const { data: auditList } = await supabase
             .from('daily_stock_counts')
             .select('*')
@@ -257,9 +260,9 @@ async function loadActivityLogs() {
 
         const combinedLogs = [];
 
+        // 🟢 แปลง Transaction (RESTOCK, ISSUE, RETURN)
         (txList || []).forEach(t => {
             const note = t.note || '';
-
             let badge = '';
             let actionText = '';
 
@@ -272,9 +275,6 @@ async function loadActivityLogs() {
             } else if (t.type === 'RETURN') {
                 badge = `<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">↩️ ส่งคืนคลังใหญ่</span>`;
                 actionText = note || 'คืนเวชภัณฑ์เข้าคลังใหญ่';
-            } else if (t.type === 'AUDIT_ADJUST') {
-                badge = `<span class="bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full font-semibold">⚠️ ปรับยอดตรวจนับ</span>`;
-                actionText = note || 'ปรับยอดตามการตรวจนับ';
             } else {
                 return;
             }
@@ -288,6 +288,7 @@ async function loadActivityLogs() {
             });
         });
 
+        // 🟣 แปลงประวัติการแจก
         (distList || []).forEach(d => {
             const rawRecipient = d.recipient_info || d.note || '-';
             const cleanRecipient = rawRecipient.replace(/^แจกให้:\s*/, '');
@@ -300,14 +301,16 @@ async function loadActivityLogs() {
             });
         });
 
+        // ⚪ แปลงประวัติตรวจนับประจำเวร
         (auditList || []).forEach(a => {
             const userId = a.counted_by || a.recorder_id || a.created_by;
+
             combinedLogs.push({
                 created_at: new Date(a.created_at || a.count_date),
                 badge: `<span class="bg-slate-100 text-slate-800 px-2 py-0.5 rounded-full font-semibold">📋 ตรวจนับประจำเวร</span>`,
                 user: userId && userMap[userId] ? userMap[userId] : 'ผู้ใช้งานระบบ',
                 qty: `${a.actual_qty ?? a.quantity ?? 0} Set`,
-                detail: a.note || 'นับยอดจริงบนชั้นวาง'
+                detail: a.note || 'ตรวจนับยอดคงเหลือ'
             });
         });
 
@@ -388,20 +391,20 @@ document.getElementById('btnIssue')?.addEventListener('click', async () => {
     }
 });
 
-// 📋 บันทึกตรวจนับสต๊อกประจำเวรคลังใหญ่ (Central Audit พร้อมชุดคำสั่ง Fallback ครบถ้วน)
+// 📋 บันทึกตรวจนับสต๊อกประจำเวรคลังใหญ่ (Central Audit)
 document.getElementById('btnSaveCentralDailyCount')?.addEventListener('click', async () => {
     const actualQtyInput = document.getElementById('centralActualCountQty');
     const noteInput = document.getElementById('centralCountNote');
     const actualQty = parseInt(actualQtyInput.value);
-    const note = noteInput.value.trim() || 'ตรวจนับประจำเวรคลังใหญ่ปกติ';
+    const note = noteInput.value.trim();
 
     if (isNaN(actualQty) || actualQty < 0) {
         return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่นับได้จริงในคลังใหญ่');
     }
 
     const confirmRes = await Swal.fire({
-        title: 'ยืนยันยอดตรวจนับคลังใหญ่?',
-        text: `ต้องการบันทึกประวัติและปรับยอดคงเหลือคลังใหญ่ในระบบเป็น ${actualQty} Set หรือไม่?`,
+        title: 'ยืนยันบันทึกยอดตรวจนับ?',
+        text: `ต้องการบันทึกประวัติการตรวจนับคลังใหญ่จำนวน ${actualQty} Set หรือไม่?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#1E293B',
@@ -413,33 +416,15 @@ document.getElementById('btnSaveCentralDailyCount')?.addEventListener('click', a
 
     if (!confirmRes.isConfirmed) return;
 
-    // ลองส่งแบบรองรับหลายลักษณะฟังก์ชัน RPC
-    let { error } = await supabase.rpc('record_daily_count', {
+    const { error } = await supabase.rpc('record_central_daily_count', {
         p_actual_qty: actualQty,
-        p_note: `[คลังใหญ่] ${note}`,
-        p_stock_type: 'CENTRAL'
+        p_note: note
     });
-
-    if (error && error.message.includes('p_stock_type')) {
-        const res2 = await supabase.rpc('record_central_daily_count', {
-            p_actual_qty: actualQty,
-            p_note: note
-        });
-        if (res2.error) {
-            const res3 = await supabase.rpc('record_daily_count', {
-                p_actual_qty: actualQty,
-                p_note: `[คลังใหญ่] ${note}`
-            });
-            error = res3.error;
-        } else {
-            error = null;
-        }
-    }
 
     if (error) {
         toastError('บันทึกตรวจนับคลังใหญ่ไม่สำเร็จ', error.message);
     } else {
-        toastSuccess('บันทึกยอดสต๊อกคลังใหญ่สำเร็จ! 📋', 'ปรับยอดคงเหลือและบันทึกส่วนต่างเรียบร้อยแล้ว');
+        toastSuccess('บันทึกยอดตรวจนับสำเร็จ! 📋', 'บันทึกประวัติการตรวจนับคลังใหญ่เรียบร้อยแล้ว');
         actualQtyInput.value = '';
         noteInput.value = '';
         await loadStockData();
@@ -535,15 +520,15 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
     const actualQtyInput = document.getElementById('actualCountQty');
     const noteInput = document.getElementById('countNote');
     const actualQty = parseInt(actualQtyInput.value);
-    const note = noteInput.value.trim() || 'ตรวจนับประจำเวรคลังย่อยปกติ';
+    const note = noteInput.value.trim();
 
     if (isNaN(actualQty) || actualQty < 0) {
         return toastWarning('กรุณากรอกข้อมูล', 'โปรดระบุจำนวนที่นับได้จริงบนชั้นวางคลังย่อย');
     }
 
     const confirmRes = await Swal.fire({
-        title: 'ยืนยันยอดตรวจนับคลังย่อย?',
-        text: `ต้องการบันทึกประวัติและปรับยอดคงเหลือคลังย่อยในระบบเป็น ${actualQty} Set หรือไม่?`,
+        title: 'ยืนยันบันทึกยอดตรวจนับ?',
+        text: `ต้องการบันทึกประวัติการตรวจนับคลังย่อยจำนวน ${actualQty} Set หรือไม่?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#1E293B',
@@ -563,7 +548,7 @@ document.getElementById('btnSaveDailyCount')?.addEventListener('click', async ()
     if (error) {
         toastError('บันทึกตรวจนับคลังย่อยไม่สำเร็จ', error.message);
     } else {
-        toastSuccess('บันทึกยอดสต๊อกคลังย่อยสำเร็จ! 📋', 'ปรับยอดคงเหลือและบันทึกส่วนต่างเรียบร้อยแล้ว');
+        toastSuccess('บันทึกยอดตรวจนับสำเร็จ! 📋', 'บันทึกประวัติการตรวจนับคลังย่อยเรียบร้อยแล้ว');
         actualQtyInput.value = '';
         noteInput.value = '';
         await loadStockData();
@@ -699,8 +684,9 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
                     'วันที่-เวลา ตรวจนับ': new Date(a.created_at || a.count_date).toLocaleString('th-TH'),
                     'ผู้ตรวจนับ (Staff)': staffName,
                     'จำนวนที่นับได้จริง (Set)': a.actual_qty ?? a.quantity ?? 0,
-                    'ยอดในระบบเดิม (Set)': a.system_qty ?? '-',
-                    'หมายเหตุ': a.note || '-'
+                    'ยอดในระบบ (Set)': a.system_qty ?? '-',
+                    'ผลต่าง (Diff)': a.diff_qty ?? 0,
+                    'รายละเอียดสรุป': a.note || '-'
                 };
             });
             XLSX.utils.book_append_sheet(workbook, createSheetWithWidth(auditData), "4. สรุปยอดนับประจำเวร");
@@ -880,7 +866,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 `${a.actual_qty ?? 0} Set`,
                 a.note || '-'
             ]);
-            fullHTML += buildTableHTML("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'หมายเหตุ'], rows);
+            fullHTML += buildTableHTML("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'รายละเอียด'], rows);
         }
 
         printContainer.innerHTML = fullHTML;
