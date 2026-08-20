@@ -708,7 +708,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Executive Report (เฉพาะ SUPER_ADMIN เท่านั้น + ล็อคปุ่ม)
+// 📄 7.2 Export PDF Executive Report (เฉพาะ SUPER_ADMIN เท่านั้น + ระบบแบ่งหน้าพร้อมเลขหน้า หน้า n)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || CURRENT_USER.role !== 'SUPER_ADMIN') {
@@ -762,52 +762,84 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         printContainer.style.margin = "0";
         printContainer.style.padding = "0";
 
-        let isFirstPage = true;
+        let globalPageNumber = 1; // ตัวนับเลขหน้าต่อเนื่อง
 
-        const buildTableHTML = (titleText, headers, rowsData) => {
-            const pageBreakStyle = !isFirstPage 
-                ? 'style="page-break-before: always; margin-top: 0 !important; padding-top: 0 !important;"' 
-                : 'style="margin-top: 0 !important; padding-top: 0 !important;"';
-            isFirstPage = false;
+        // ฟังก์ชันสร้างหน้า PDF แบบแบ่ง Chunk ละ 20 แถวต่อหน้า พร้อมหัวเรื่องและเลขหน้า หน้า n
+        const buildPaginatedSectionHTML = (titleText, headers, rowsData, rowsPerPage = 20) => {
+            let sectionHTML = '';
+            
+            // กรณีไม่มีข้อมูล
+            if (!rowsData || rowsData.length === 0) {
+                let headerHTML = '';
+                headers.forEach(h => {
+                    headerHTML += `<th style="padding: 6px 8px; font-size: 16px; font-weight: bold; text-align: left; background-color: #1e293b; color: #ffffff;">${h}</th>`;
+                });
 
-            let rowsHTML = '';
-            if (rowsData.length > 0) {
-                rowsData.forEach(row => {
+                sectionHTML += `
+                    <div class="pdf-page" style="page-break-after: always; padding: 0; margin: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0284c7; padding-bottom: 4px; margin-bottom: 8px;">
+                            <div>
+                                <h2 style="font-size: 20px; font-weight: bold; margin: 0; padding: 0; color: #0f172a; line-height: 1.2;">รายงาน D-Stock ER: ${titleText}</h2>
+                                <p style="font-size: 13px; color: #475569; margin: 2px 0 0 0; padding: 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Super Admin'}</p>
+                            </div>
+                            <div style="font-size: 18px; font-weight: bold; color: #0f172a; white-space: nowrap; padding-left: 10px;">
+                                หน้า ${globalPageNumber++}
+                            </div>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+                            <thead><tr>${headerHTML}</tr></thead>
+                            <tbody><tr><td colspan="${headers.length}" style="text-align: center; padding: 8px; font-size: 15px; color: #64748b;">ไม่มีข้อมูล</td></tr></tbody>
+                        </table>
+                    </div>
+                `;
+                return sectionHTML;
+            }
+
+            // แบ่งข้อมูลออกเป็นทีละ 20 แถวต่อหน้า
+            const totalPagesForSection = Math.ceil(rowsData.length / rowsPerPage);
+
+            for (let pageIdx = 0; pageIdx < totalPagesForSection; pageIdx++) {
+                const chunkRows = rowsData.slice(pageIdx * rowsPerPage, (pageIdx + 1) * rowsPerPage);
+                
+                let rowsHTML = '';
+                chunkRows.forEach(row => {
                     rowsHTML += `<tr style="border-bottom: 1px solid #cbd5e1;">`;
                     row.forEach(cell => {
                         rowsHTML += `<td style="padding: 4px 8px; font-size: 15px;">${cell}</td>`;
                     });
                     rowsHTML += `</tr>`;
                 });
-            } else {
-                rowsHTML = `<tr><td colspan="${headers.length}" style="text-align: center; padding: 8px; font-size: 15px; color: #64748b;">ไม่มีข้อมูล</td></tr>`;
+
+                let headerHTML = '';
+                headers.forEach(h => {
+                    headerHTML += `<th style="padding: 6px 8px; font-size: 16px; font-weight: bold; text-align: left; background-color: #1e293b; color: #ffffff;">${h}</th>`;
+                });
+
+                sectionHTML += `
+                    <div class="pdf-page" style="page-break-after: always; padding: 0; margin: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0284c7; padding-bottom: 4px; margin-bottom: 8px;">
+                            <div>
+                                <h2 style="font-size: 20px; font-weight: bold; margin: 0; padding: 0; color: #0f172a; line-height: 1.2;">รายงาน D-Stock ER: ${titleText}</h2>
+                                <p style="font-size: 13px; color: #475569; margin: 2px 0 0 0; padding: 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Super Admin'}</p>
+                            </div>
+                            <div style="font-size: 18px; font-weight: bold; color: #0f172a; white-space: nowrap; padding-left: 10px;">
+                                หน้า ${globalPageNumber++}
+                            </div>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+                            <thead><tr>${headerHTML}</tr></thead>
+                            <tbody>${rowsHTML}</tbody>
+                        </table>
+                    </div>
+                `;
             }
 
-            let headerHTML = '';
-            headers.forEach(h => {
-                headerHTML += `<th style="padding: 6px 8px; font-size: 16px; font-weight: bold; text-align: left; background-color: #1e293b; color: #ffffff;">${h}</th>`;
-            });
-
-            return `
-                <div class="pdf-section" ${pageBreakStyle}>
-                    <div style="margin-top: 0; margin-bottom: 6px; border-bottom: 2px solid #0284c7; padding-bottom: 4px;">
-                        <h2 style="font-size: 20px; font-weight: bold; margin: 0; padding: 0; color: #0f172a; line-height: 1.2;">รายงาน D-Stock ER: ${titleText}</h2>
-                        <p style="font-size: 13px; color: #475569; margin: 2px 0 0 0; padding: 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Super Admin'}</p>
-                    </div>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
-                        <thead>
-                            <tr>${headerHTML}</tr>
-                        </thead>
-                        <tbody>
-                            ${rowsHTML}
-                        </tbody>
-                    </table>
-                </div>
-            `;
+            return sectionHTML;
         };
 
         let fullHTML = '';
 
+        // 1. เติมเข้าคลังใหญ่
         if (isRestockChecked) {
             let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -821,9 +853,10 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 `${t.quantity} Set`,
                 t.note || '-'
             ]);
-            fullHTML += buildTableHTML("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows);
+            fullHTML += buildPaginatedSectionHTML("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows, 20);
         }
 
+        // 2. จ่าย-คืน คลังย่อย
         if (isTransferChecked) {
             let query = supabase.from('stock_transactions').select('*').in('type', ['ISSUE', 'RETURN']).order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -836,9 +869,10 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 t.to_user_id && userMap[t.to_user_id] ? userMap[t.to_user_id] : (t.from_user_id && userMap[t.from_user_id] ? userMap[t.from_user_id] : 'ผู้ใช้งานระบบ'),
                 `${t.quantity} Set`
             ]);
-            fullHTML += buildTableHTML("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows);
+            fullHTML += buildPaginatedSectionHTML("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows, 20);
         }
 
+        // 3. ประวัติการแจกใช้งาน
         if (isDistributeChecked) {
             let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -851,9 +885,10 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 (d.recipient_info || d.note || '-').replace(/^แจกให้:\s*/, ''),
                 `${d.quantity} Set`
             ]);
-            fullHTML += buildTableHTML("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows);
+            fullHTML += buildPaginatedSectionHTML("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows, 20);
         }
 
+        // 4. สรุปยอดนับประจำเวร
         if (isAuditChecked) {
             let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
             if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
@@ -866,7 +901,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 `${a.actual_qty ?? 0} Set`,
                 a.note || '-'
             ]);
-            fullHTML += buildTableHTML("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'รายละเอียด'], rows);
+            fullHTML += buildPaginatedSectionHTML("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'รายละเอียด'], rows, 20);
         }
 
         printContainer.innerHTML = fullHTML;
@@ -874,7 +909,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         const dateStr = (startDate && endDate) ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
         
         const opt = {
-            margin:       [2, 6, 6, 6],
+            margin:       [4, 6, 4, 6],
             filename:     `D-Stock_ER_Report_${dateStr}.pdf`,
             image:        { type: 'jpeg', quality: 0.98 },
             html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
