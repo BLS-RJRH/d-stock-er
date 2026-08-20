@@ -606,7 +606,7 @@ document.getElementById('btnExportExcel')?.addEventListener('click', async () =>
 });
 
 // -------------------------------------------------------------
-// 📄 7.2 Export PDF Report
+// 📄 7.2 Export PDF Report (ปรับให้เต็มหน้ากระดาษ 33 แถว/หน้า ไม่เหลือช่องว่าง)
 // -------------------------------------------------------------
 document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
     if (!CURRENT_USER || CURRENT_USER.role !== 'SUPER_ADMIN') {
@@ -652,22 +652,23 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
 
         let globalPageNumber = 1;
 
-        const buildPaginatedSectionHTML = (titleText, headers, rowsData, rowsPerPage = 20) => {
+        // 🎯 ปรับ default เป็น 33 แถวต่อหน้า เพื่อใช้พื้นที่หน้ากระดาษ A4 ให้เต็มเป๊ะ
+        const buildPaginatedSectionHTML = (titleText, headers, rowsData, rowsPerPage = 33) => {
             let sectionHTML = '';
-            const headerHTML = headers.map(h => `<th style="padding: 6px 8px; font-size: 16px; font-weight: bold; text-align: left; background-color: #1e293b; color: #ffffff;">${h}</th>`).join('');
+            const headerHTML = headers.map(h => `<th style="padding: 4px 6px; font-size: 15px; font-weight: bold; text-align: left; background-color: #1e293b; color: #ffffff;">${h}</th>`).join('');
 
             const getPageWrapper = (innerBody) => `
                 <div class="pdf-page" style="page-break-after: always; padding: 0; margin: 0;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0284c7; padding-bottom: 4px; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0284c7; padding-bottom: 2px; margin-bottom: 6px;">
                         <div>
-                            <h2 style="font-size: 20px; font-weight: bold; margin: 0; padding: 0; color: #0f172a; line-height: 1.2;">รายงาน D-Stock ER: ${titleText}</h2>
-                            <p style="font-size: 13px; color: #475569; margin: 2px 0 0 0; padding: 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Super Admin'}</p>
+                            <h2 style="font-size: 18px; font-weight: bold; margin: 0; padding: 0; color: #0f172a; line-height: 1.2;">รายงาน D-Stock ER: ${titleText}</h2>
+                            <p style="font-size: 12px; color: #475569; margin: 2px 0 0 0; padding: 0;">ช่วงวันที่: ${startDate || 'ทั้งหมด'} ถึง ${endDate || 'ปัจจุบัน'} | ผู้พิมพ์: ${CURRENT_USER.full_name || 'Super Admin'}</p>
                         </div>
-                        <div style="font-size: 18px; font-weight: bold; color: #0f172a; white-space: nowrap; padding-left: 10px;">
+                        <div style="font-size: 16px; font-weight: bold; color: #0f172a; white-space: nowrap; padding-left: 10px;">
                             หน้า ${globalPageNumber++}
                         </div>
                     </div>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
                         <thead><tr>${headerHTML}</tr></thead>
                         <tbody>${innerBody}</tbody>
                     </table>
@@ -675,7 +676,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
             `;
 
             if (!rowsData || rowsData.length === 0) {
-                return getPageWrapper(`<tr><td colspan="${headers.length}" style="text-align: center; padding: 8px; font-size: 15px; color: #64748b;">ไม่มีข้อมูล</td></tr>`);
+                return getPageWrapper(`<tr><td colspan="${headers.length}" style="text-align: center; padding: 6px; font-size: 14px; color: #64748b;">ไม่มีข้อมูล</td></tr>`);
             }
 
             const totalPages = Math.ceil(rowsData.length / rowsPerPage);
@@ -683,7 +684,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 const chunk = rowsData.slice(i * rowsPerPage, (i + 1) * rowsPerPage);
                 const rowsHTML = chunk.map(row => `
                     <tr style="border-bottom: 1px solid #cbd5e1;">
-                        ${row.map(cell => `<td style="padding: 4px 8px; font-size: 15px;">${cell}</td>`).join('')}
+                        ${row.map(cell => `<td style="padding: 3px 6px; font-size: 13.5px; line-height: 1.2;">${cell}</td>`).join('')}
                     </tr>
                 `).join('');
                 sectionHTML += getPageWrapper(rowsHTML);
@@ -700,6 +701,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
 
         let fullHTML = '';
 
+        // 1. เติมเข้าคลังใหญ่
         if (isRestockChecked) {
             let query = supabase.from('stock_transactions').select('*').eq('type', 'RESTOCK').order('created_at', { ascending: false });
             const { data: list } = await applyDateFilter(query);
@@ -710,9 +712,10 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 `${t.quantity} Set`,
                 t.note || '-'
             ]);
-            fullHTML += buildPaginatedSectionHTML("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows, 20);
+            fullHTML += buildPaginatedSectionHTML("1. รายงานการเติมเข้าคลังใหญ่", ['วันที่-เวลา', 'ผู้ดำเนินการ', 'จำนวน', 'หมายเหตุ'], rows, 33);
         }
 
+        // 2. จ่าย-คืน คลังย่อย
         if (isTransferChecked) {
             let query = supabase.from('stock_transactions').select('*').in('type', ['ISSUE', 'RETURN']).order('created_at', { ascending: false });
             const { data: list } = await applyDateFilter(query);
@@ -722,9 +725,10 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 t.to_user_id && USER_MAP[t.to_user_id] ? USER_MAP[t.to_user_id] : (t.from_user_id && USER_MAP[t.from_user_id] ? USER_MAP[t.from_user_id] : 'ผู้ใช้งานระบบ'),
                 `${t.quantity} Set`
             ]);
-            fullHTML += buildPaginatedSectionHTML("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows, 20);
+            fullHTML += buildPaginatedSectionHTML("2. รายงานการจ่าย-คืน คลังย่อย", ['วันที่-เวลา', 'การดำเนินการ', 'ผู้รับ/ผู้ส่งคืน', 'จำนวน'], rows, 33);
         }
 
+        // 3. ประวัติการแจกใช้งาน
         if (isDistributeChecked) {
             let query = supabase.from('distribution_logs').select('*').order('created_at', { ascending: false });
             const { data: list } = await applyDateFilter(query);
@@ -734,9 +738,10 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 (d.recipient_info || d.note || '-').replace(/^แจกให้:\s*/, ''),
                 `${d.quantity} Set`
             ]);
-            fullHTML += buildPaginatedSectionHTML("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows, 20);
+            fullHTML += buildPaginatedSectionHTML("3. ประวัติการแจกใช้งาน", ['วันที่-เวลา', 'ผู้แจก (Staff)', 'ผู้รับเวชภัณฑ์', 'จำนวนที่แจก'], rows, 33);
         }
 
+        // 4. สรุปยอดนับประจำเวร
         if (isAuditChecked) {
             let query = supabase.from('daily_stock_counts').select('*').order('created_at', { ascending: false });
             const { data: list } = await applyDateFilter(query);
@@ -746,7 +751,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
                 `${a.actual_qty ?? 0} Set`,
                 a.note || '-'
             ]);
-            fullHTML += buildPaginatedSectionHTML("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'รายละเอียด'], rows, 20);
+            fullHTML += buildPaginatedSectionHTML("4. สรุปยอดนับประจำเวร", ['วันที่-เวลา ตรวจนับ', 'ผู้ตรวจนับ (Staff)', 'นับได้จริง', 'รายละเอียด'], rows, 33);
         }
 
         printContainer.innerHTML = fullHTML;
@@ -762,7 +767,7 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         };
 
         await html2pdf().set(opt).from(printContainer).save();
-        printContainer.remove(); // Cleanup Memory
+        printContainer.remove();
 
         Swal.close();
         toastSuccess('ส่งออก PDF สำเร็จ 📄', 'ดาวน์โหลดไฟล์ PDF เรียบร้อยแล้ว');
@@ -777,7 +782,6 @@ document.getElementById('btnExportPDF')?.addEventListener('click', async () => {
         btnPDF.innerHTML = originalText;
     }
 });
-
 // -------------------------------------------------------------
 // 🚪 8. ปุ่ม Logout
 // -------------------------------------------------------------
